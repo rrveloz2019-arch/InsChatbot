@@ -1,0 +1,468 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Lead Bot Agent Portal</title>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:wght@600;700&display=swap">
+<link rel="stylesheet" href="portal.css">
+<script src="vendor/supabase-2.49.4.js"></script>
+<script src="vendor/qrcode-1.0.0.js"></script>
+<script src="config.js"></script>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============ SIGN IN / SIGN UP ============ -->
+  <section id="authView" class="login card" hidden>
+    <h1>Agent Portal</h1>
+    <p class="muted small">Florida ACA lead chatbot for licensed insurance agents.</p>
+    <div class="authTabs" role="tablist">
+      <button type="button" id="modeIn" aria-pressed="true">Sign in</button>
+      <button type="button" id="modeUp" aria-pressed="false">Create account</button>
+    </div>
+    <form id="authForm" novalidate>
+      <label id="nameWrap" hidden>Full name <input id="fullName" autocomplete="name"></label>
+      <label>Email <input id="email" type="email" autocomplete="username"></label>
+      <label>Password <input id="password" type="password" autocomplete="current-password"></label>
+      <div class="small" id="authMsg" role="status"></div>
+      <button class="btn" type="submit" id="authBtn">Sign in</button>
+      <button class="linkish small" type="button" id="forgot">Forgot your password?</button>
+    </form>
+  </section>
+
+  <!-- 2-step code at sign-in -->
+  <section id="mfaView" class="login card" hidden>
+    <h1>Enter your 6-digit code</h1>
+    <p class="muted small">Open your authenticator app (Google Authenticator, Microsoft Authenticator, Authy) and type the code for Lead Bot.</p>
+    <form id="mfaForm" class="stack" novalidate>
+      <label>6-digit code <input id="mfaCode" inputmode="numeric" autocomplete="one-time-code" maxlength="6"></label>
+      <div class="small" id="mfaMsg" role="status"></div>
+      <button class="btn" type="submit">Verify</button>
+      <button class="btn ghost" type="button" id="mfaCancel">Sign out</button>
+    </form>
+  </section>
+
+  <!-- New password after a reset link -->
+  <section id="resetView" class="login card" hidden>
+    <h1>Choose a new password</h1>
+    <form id="resetForm" class="stack" novalidate>
+      <label>New password (at least 10 characters) <input id="newPw" type="password" autocomplete="new-password"></label>
+      <div class="small" id="resetMsg" role="status"></div>
+      <button class="btn" type="submit">Save new password</button>
+    </form>
+  </section>
+
+  <!-- ============ APP ============ -->
+  <section id="appView" hidden>
+    <div class="top">
+      <div class="who"><div class="avatar" id="avatar"></div><div><div class="role" id="roleLabel"></div><h1 id="whoName"></h1></div></div>
+      <div class="row"><button class="btn ghost" type="button" id="refresh">Refresh</button><button class="btn ghost" type="button" id="logout">Sign out</button></div>
+    </div>
+    <div class="banner" id="pendingBanner" hidden>Your account is waiting for approval. Complete your profile (phone and Florida license #). Your chatbot link goes live once the admin approves you.</div>
+    <nav class="tabs" role="tablist" id="tabs"></nav>
+
+    <!-- LEADS -->
+    <div id="tab-leads" class="stack" role="tabpanel" hidden>
+      <div class="chips" id="groupChips"></div>
+      <div class="row">
+        <label style="flex:1 1 200px">Search name or phone <input id="search" placeholder="e.g. Rosa or 305"></label>
+        <label style="flex:0 1 180px">Status
+          <select id="statusFilter"><option value="">All statuses</option><option value="new">New</option><option value="called">Called</option><option value="enrolled">Enrolled</option><option value="lost">Not interested</option></select>
+        </label>
+        <div class="row" style="align-self:flex-end"><button class="btn ghost" type="button" id="csv">Download CSV</button></div>
+      </div>
+      <div class="tbl"><table id="leadTable"></table></div>
+      <p class="small muted">Group is an estimate from the chatbot answers. Confirm eligibility on HealthCare.gov before recommending a plan.</p>
+    </div>
+
+    <!-- CHATBOT -->
+    <div id="tab-bot" class="grid2" role="tabpanel" hidden>
+      <div class="card stack">
+        <h2>My chatbot link</h2>
+        <p class="muted small">Put this link in your Facebook ads, Instagram bio, WhatsApp status and text messages. Every lead from it comes only to you.</p>
+        <div class="linkbox"><input id="botLink" readonly aria-label="Chatbot link"><button class="btn" type="button" id="copyLink">Copy link</button></div>
+        <a id="openBot" target="_blank" rel="noopener">Open my chatbot ↗</a>
+        <h3>QR code with your photo</h3>
+        <div id="qrSrc" hidden></div>
+        <img id="qrImg" alt="QR code that opens your chatbot, with your photo in the center" width="300" height="360">
+        <div class="row"><button class="btn ghost" type="button" id="qrDownload">Download QR code (PNG)</button></div>
+        <p class="small muted">Print it on flyers, business cards or posters. Add or change your photo in <b>Profile &amp; security</b>.</p>
+      </div>
+      <div class="card stack">
+        <h2>What customers see</h2>
+        <div class="card" style="background:var(--bg)"><h3>Florida Health Plan Check 2027</h3><div class="small muted" id="botPreview"></div></div>
+        <h3>My numbers</h3>
+        <ul class="small" id="botStats"></ul>
+      </div>
+    </div>
+
+    <!-- PROFILE & SECURITY -->
+    <div id="tab-profile" class="grid2" role="tabpanel" hidden>
+      <form class="card stack" id="profileForm" novalidate>
+        <h2>My profile</h2>
+        <div class="photoRow">
+          <img class="photo" id="pPhotoPreview" alt="Your profile photo" hidden>
+          <label style="flex:1 1 200px">Profile photo (JPG, PNG or WebP; appears in your chatbot and QR code)
+            <input id="pPhoto" type="file" accept="image/png,image/jpeg,image/webp">
+          </label>
+          <button class="btn ghost" type="button" id="pPhotoRemove" hidden>Remove photo</button>
+        </div>
+        <label>Full name <input id="pName" autocomplete="name"></label>
+        <label>Phone <input id="pPhone" type="tel" autocomplete="tel"></label>
+        <label>Email (sign-in and new-lead alerts) <input id="pEmail" type="email" readonly></label>
+        <label>Florida license # (required; shown on your chatbot) <input id="pLicense"></label>
+        <label>Booking link (optional, must start with https://) <input id="pBooking" placeholder="https://calendly.com/…"></label>
+        <label class="switch"><input type="checkbox" id="pAlerts"> Email me every new lead</label>
+        <div class="small" id="profileMsg" role="status"></div>
+        <button class="btn" type="submit">Save profile</button>
+      </form>
+      <div class="card stack sec">
+        <h2>Security</h2>
+        <h3>2-step verification</h3>
+        <p class="small muted" id="mfaStatus"></p>
+        <div id="mfaEnroll" class="stack" hidden>
+          <p class="small">1. Scan this code with your authenticator app.</p>
+          <div id="mfaQr"></div>
+          <p class="small muted">Can't scan? Enter this key: <code id="mfaSecret"></code></p>
+          <label>2. Type the 6-digit code it shows <input id="mfaEnrollCode" inputmode="numeric" maxlength="6"></label>
+          <button class="btn" type="button" id="mfaEnrollVerify">Turn on 2-step verification</button>
+        </div>
+        <div class="row"><button class="btn ghost" type="button" id="mfaToggle"></button></div>
+        <div class="small" id="secMsg" role="status"></div>
+        <h3>Password</h3>
+        <button class="btn ghost" type="button" id="pwReset">Email me a password-reset link</button>
+        <h3>How your leads are protected</h3>
+        <ul class="small">
+          <li>Only you can see your leads. The database enforces this, not just the screen.</li>
+          <li>Data is encrypted in transit (HTTPS) and at rest.</li>
+          <li>Leads are accepted only with phone consent, a valid phone number and a Florida ZIP code.</li>
+          <li>No SSNs or medical information are collected.</li>
+        </ul>
+      </div>
+    </div>
+
+    <!-- ADMIN -->
+    <div id="tab-admin" class="stack" role="tabpanel" hidden>
+      <div class="chips" id="adminChips"></div>
+      <div class="card stack">
+        <h2>Agents</h2>
+        <p class="small muted">New agents create their own account and start as <b>Inactive</b>. Activate them after you check their Florida license #.</p>
+        <div class="tbl"><table id="agentTable"></table></div>
+        <div class="small" id="adminMsg" role="status"></div>
+      </div>
+    </div>
+  </section>
+</div>
+
+<script>
+const C = window.APP_CONFIG;
+const sb = window.supabase.createClient(C.supabaseUrl, C.supabaseKey);
+const GROUPS = {
+  G1:{label:"Group 1 · $0 premium", color:"var(--g1)"}, G2:{label:"Group 2 · Low deductible", color:"var(--g2)"},
+  G3:{label:"Group 3 · Check-ups", color:"var(--g3)"},  G4:{label:"Group 4 · Pays some", color:"var(--g4)"},
+  GAP:{label:"Coverage gap", color:"var(--gap)"},       REVIEW:{label:"Needs review", color:"var(--rev)"}
+};
+const STATUS = { new:"New", called:"Called", enrolled:"Enrolled", lost:"Not interested" };
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"']/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
+const fmtPhone = p => p && p.length===10 ? `(${p.slice(0,3)}) ${p.slice(3,6)}-${p.slice(6)}` : (p || "");
+const fmtDate = d => new Date(d).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
+const initials = n => (n||"?").split(/\s+/).map(w=>w[0]).join("").slice(0,2).toUpperCase();
+const say = (id, text, ok) => { const m=$(id); m.textContent=text; m.style.color = ok ? "var(--ok)" : "var(--err)"; };
+function toast(msg){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),3500); }
+const photoUrl = path => path ? sb.storage.from(C.photoBucket).getPublicUrl(path).data.publicUrl : "";
+const botLinkFor = slug => new URL("chat.html?agent=" + encodeURIComponent(slug), location.href).href;
+
+let ME = null, LEADS = [], AGENTS = [], tab = "leads", groupFilter = "", mode = "in", recovering = false;
+
+/* ============ VIEWS ============ */
+function showOnly(id){ ["authView","mfaView","resetView","appView"].forEach(v => $(v).hidden = v !== id); }
+
+/* ============ AUTH ============ */
+function setMode(m){
+  mode = m; $("modeIn").setAttribute("aria-pressed", m==="in"); $("modeUp").setAttribute("aria-pressed", m==="up");
+  $("nameWrap").hidden = m!=="up"; $("authBtn").textContent = m==="up" ? "Create account" : "Sign in";
+  $("password").autocomplete = m==="up" ? "new-password" : "current-password"; $("authMsg").textContent="";
+}
+$("modeIn").onclick = () => setMode("in");
+$("modeUp").onclick = () => setMode("up");
+$("authForm").onsubmit = async e => {
+  e.preventDefault();
+  const email=$("email").value.trim().toLowerCase(), pw=$("password").value, name=$("fullName").value.trim();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return say("authMsg","Enter a valid email address.");
+  if(mode==="up"){
+    if(!name) return say("authMsg","Enter your full name.");
+    if(pw.length<10) return say("authMsg","Use a password with at least 10 characters.");
+    $("authBtn").disabled=true;
+    const { error } = await sb.auth.signUp({ email, password:pw, options:{ data:{ full_name:name }, emailRedirectTo: location.href.split("#")[0].split("?")[0] } });
+    $("authBtn").disabled=false;
+    if(error) return say("authMsg", error.message);
+    return say("authMsg", `Almost done! We sent a confirmation link to ${email}. Open it, then sign in here.`, true);
+  }
+  if(!pw) return say("authMsg","Enter your password.");
+  $("authBtn").disabled=true;
+  const { error } = await sb.auth.signInWithPassword({ email, password:pw });
+  $("authBtn").disabled=false;
+  if(error) return say("authMsg", error.message==="Email not confirmed" ? "Please confirm your email first. Check your inbox for the link." : "Email or password is incorrect.");
+  await afterSignIn();
+};
+$("forgot").onclick = async () => {
+  const email=$("email").value.trim().toLowerCase();
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return say("authMsg","Type your email above first, then tap “Forgot your password?”.");
+  const { error } = await sb.auth.resetPasswordForEmail(email, { redirectTo: location.href.split("#")[0].split("?")[0] });
+  say("authMsg", error ? error.message : `If an account exists for ${email}, a reset link is on its way.`, !error);
+};
+$("resetForm").onsubmit = async e => {
+  e.preventDefault(); const pw=$("newPw").value;
+  if(pw.length<10) return say("resetMsg","Use at least 10 characters.");
+  const { error } = await sb.auth.updateUser({ password:pw });
+  if(error) return say("resetMsg", error.message);
+  recovering=false; toast("Password updated"); await afterSignIn();
+};
+$("logout").onclick = $("mfaCancel").onclick = async () => { await sb.auth.signOut(); ME=null; setMode("in"); showOnly("authView"); };
+
+async function afterSignIn(){
+  const { data:aal } = await sb.auth.mfa.getAuthenticatorAssuranceLevel();
+  if(aal && aal.nextLevel==="aal2" && aal.currentLevel!=="aal2"){ $("mfaCode").value=""; $("mfaMsg").textContent=""; showOnly("mfaView"); $("mfaCode").focus(); return; }
+  await loadApp();
+}
+$("mfaForm").onsubmit = async e => {
+  e.preventDefault(); const code=$("mfaCode").value.trim();
+  if(!/^\d{6}$/.test(code)) return say("mfaMsg","The code must be 6 digits.");
+  const { data:f } = await sb.auth.mfa.listFactors();
+  const factor = f && f.totp && f.totp[0];
+  if(!factor) return say("mfaMsg","No authenticator is set up for this account.");
+  const { error } = await sb.auth.mfa.challengeAndVerify({ factorId:factor.id, code });
+  if(error) return say("mfaMsg","That code didn't work. Wait for a new code and try again.");
+  await loadApp();
+};
+
+/* ============ APP ============ */
+async function loadApp(){
+  const { data:{ user } } = await sb.auth.getUser();
+  if(!user){ showOnly("authView"); return; }
+  const { data, error } = await sb.from("agents").select("*").eq("id", user.id).single();
+  if(error || !data){ say("authMsg","Your profile could not be loaded. Please try again in a minute."); showOnly("authView"); return; }
+  ME = data;
+  const admin = ME.role==="admin";
+  $("whoName").textContent = admin ? `${ME.full_name} (Admin)` : ME.full_name;
+  $("roleLabel").textContent = admin ? "Admin" : (ME.active ? "Agent · Active" : "Agent · Waiting for approval");
+  setAvatar();
+  $("pendingBanner").hidden = admin || ME.active;
+  const tabs = admin ? [["admin","Agents & totals"],["leads","All leads"],["profile","Profile & security"]]
+                     : [["leads","My leads"],["bot","My chatbot"],["profile","Profile & security"]];
+  tab = tabs[0][0]; groupFilter = ""; $("search").value = ""; $("statusFilter").value = "";   // every sign-in starts fresh
+  $("tabs").innerHTML = tabs.map(([k,l])=>`<button role="tab" data-tab="${k}" id="tabbtn-${k}">${l}</button>`).join("");
+  $("tabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{ tab=b.dataset.tab; show(); });
+  showOnly("appView");
+  await reload();
+}
+async function reload(){
+  const q = sb.from("leads").select(ME.role==="admin" ? "*, agents(full_name)" : "*").order("created_at",{ascending:false}).limit(2000);
+  const { data, error } = await q;
+  LEADS = error ? [] : data;
+  if(error) toast("Leads could not be loaded: " + error.message);
+  if(ME.role==="admin"){ const r = await sb.from("agents").select("*").order("created_at"); AGENTS = r.data || []; }
+  show();
+}
+$("refresh").onclick = () => reload();
+function show(){
+  ["leads","bot","profile","admin"].forEach(k => $("tab-"+k).hidden = k!==tab);
+  $("tabs").querySelectorAll("button").forEach(b=>b.setAttribute("aria-selected", b.dataset.tab===tab));
+  ({ leads:renderLeads, bot:renderBot, profile:renderProfile, admin:renderAdmin })[tab]();
+}
+function setAvatar(){ const av=$("avatar"); if(ME.photo_path){ av.innerHTML=`<img alt="" src="${esc(photoUrl(ME.photo_path))}">`; } else av.textContent=initials(ME.full_name); }
+
+/* ---------- leads ---------- */
+function filteredLeads(){
+  const q=$("search").value.trim().toLowerCase(), st=$("statusFilter").value, digits=q.replace(/\D/g,"");
+  return LEADS.filter(l => (!groupFilter || l.grp===groupFilter) && (!st || l.status===st) &&
+    (!q || l.first_name.toLowerCase().includes(q) || (digits && l.phone.includes(digits))));
+}
+function renderLeads(){
+  const count = k => LEADS.filter(l=>l.grp===k).length;
+  $("groupChips").innerHTML = `<button class="chip" data-g="" aria-pressed="${groupFilter===""}"><b>${LEADS.length}</b><span>All leads</span></button>` +
+    Object.entries(GROUPS).map(([k,g])=>`<button class="chip" data-g="${k}" aria-pressed="${groupFilter===k}"><b>${count(k)}</b><span><i class="dot" style="background:${g.color}"></i>${g.label}</span></button>`).join("");
+  $("groupChips").querySelectorAll(".chip").forEach(c=>c.onclick=()=>{ groupFilter=c.dataset.g; renderLeads(); });
+  const admin = ME.role==="admin", rows = filteredLeads();
+  $("leadTable").innerHTML = `<tr><th>Received</th><th>Name</th><th>Phone</th><th>Group</th><th>ZIP</th><th>Household</th><th>Income vs. poverty level</th><th>Best time</th><th>Lang</th>${admin?"<th>Agent</th>":""}<th>Status</th></tr>` +
+    (rows.length ? rows.map(l=>`<tr data-id="${esc(l.id)}">
+      <td class="num">${fmtDate(l.created_at)}</td><td>${esc(l.first_name)}</td><td class="num">${fmtPhone(l.phone)}</td>
+      <td><span class="pill" style="color:${GROUPS[l.grp].color}">${GROUPS[l.grp].label}</span></td>
+      <td class="num">${esc(l.zip)}</td><td class="num">${l.household}</td><td class="num">${l.fpl_pct}%</td><td>${esc(l.best_time||"")}</td><td>${esc(l.lang).toUpperCase()}</td>
+      ${admin?`<td>${esc(l.agents?.full_name||"")}</td>`:""}
+      <td><select class="status status-${esc(l.status)}" aria-label="Status for ${esc(l.first_name)}">${Object.entries(STATUS).map(([k,v])=>`<option value="${k}" ${k===l.status?"selected":""}>${v}</option>`).join("")}</select></td></tr>`).join("")
+    : `<tr><td colspan="11" class="empty">${LEADS.length ? "No leads match these filters." : "No leads yet. Share your chatbot link or QR code to start getting leads."}</td></tr>`);
+  $("leadTable").querySelectorAll("select.status").forEach(s => s.onchange = async () => {
+    const id=s.closest("tr").dataset.id, l=LEADS.find(x=>x.id===id), before=l.status;
+    const { error } = await sb.from("leads").update({ status:s.value }).eq("id", id);
+    if(error){ s.value=before; toast("Status could not be saved: " + error.message); return; }
+    l.status=s.value; s.className="status status-"+s.value; toast(`${l.first_name} marked “${STATUS[s.value]}”`);
+  });
+}
+$("search").oninput = renderLeads; $("statusFilter").onchange = renderLeads;
+$("csv").onclick = () => {
+  const cols=["created_at","first_name","phone","grp","zip","household","income","fpl_pct","coverage","priority","best_time","lang","status","consent_at","consent_text"];
+  const cell=v=>{ let s=String(v??""); if(/^[=+\-@]/.test(s)) s="'"+s; return `"${s.replace(/"/g,'""')}"`; };
+  const csv=[cols.join(","), ...filteredLeads().map(l=>cols.map(c=>cell(l[c])).join(","))].join("\n");
+  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download="leads.csv"; a.click(); URL.revokeObjectURL(a.href);
+};
+
+/* ---------- chatbot + QR ---------- */
+const loadImg = src => new Promise((ok,bad)=>{ const i=new Image(); i.crossOrigin="anonymous"; i.onload=()=>ok(i); i.onerror=bad; i.src=src; });
+async function buildPhotoQR(agent, link){
+  const Q=720, PAD=40, W=Q+PAD*2, CAP=120, H=W+CAP, src=$("qrSrc"); src.innerHTML="";
+  new QRCode(src,{ text:link, width:Q, height:Q, colorDark:"#0b2e22", colorLight:"#ffffff", correctLevel:QRCode.CorrectLevel.H });   // level H recovers ~30%
+  const c=document.createElement("canvas"); c.width=W; c.height=H; const x=c.getContext("2d");
+  x.fillStyle="#ffffff"; x.fillRect(0,0,W,H); x.drawImage(src.querySelector("canvas"),PAD,PAD,Q,Q);
+  const cx=W/2, cy=PAD+Q/2, r=Q*0.11;                        // photo diameter = 22% of the code
+  x.beginPath(); x.arc(cx,cy,r+10,0,Math.PI*2); x.fillStyle="#ffffff"; x.fill();
+  x.save(); x.beginPath(); x.arc(cx,cy,r,0,Math.PI*2); x.clip();
+  let drewPhoto=false;
+  if(agent.photo_path){ try{ const img=await loadImg(photoUrl(agent.photo_path)); const s=Math.min(img.width,img.height);
+      x.drawImage(img,(img.width-s)/2,(img.height-s)/2,s,s,cx-r,cy-r,r*2,r*2); drewPhoto=true; }catch(e){} }
+  if(!drewPhoto){ x.fillStyle="#0b6e4f"; x.fillRect(cx-r,cy-r,r*2,r*2); x.fillStyle="#fff"; x.font="700 64px 'Bricolage Grotesque',system-ui,sans-serif"; x.textAlign="center"; x.textBaseline="middle"; x.fillText(initials(agent.full_name),cx,cy+3); }
+  x.restore(); x.beginPath(); x.arc(cx,cy,r,0,Math.PI*2); x.lineWidth=6; x.strokeStyle="#0b6e4f"; x.stroke();
+  x.fillStyle="#0b2e22"; x.textAlign="center"; x.textBaseline="alphabetic";
+  x.font="700 40px 'Bricolage Grotesque',system-ui,sans-serif"; x.fillText("Scan to check your 2027 health plan",cx,W+30,W-40);
+  x.font="400 32px 'Atkinson Hyperlegible',system-ui,sans-serif"; x.fillStyle="#3d4a44";
+  x.fillText(`${agent.full_name} · Licensed agent${agent.phone ? " · " + fmtPhone(agent.phone) : ""}`,cx,W+80,W-40);
+  return c.toDataURL("image/png");
+}
+async function renderBot(){
+  const link = botLinkFor(ME.slug);
+  $("botLink").value = link; $("openBot").href = link;
+  $("botPreview").textContent = `${ME.full_name} · Licensed agent · Lic. ${ME.license_no || "MISSING – add it in your profile"}${ME.phone ? " · " + fmtPhone(ME.phone) : ""}`;
+  $("botStats").innerHTML = `<li>${LEADS.length} leads total</li><li>${LEADS.filter(l=>l.status==="enrolled").length} enrolled</li><li>${LEADS.filter(l=>l.lang==="es").length} chatted in Spanish</li><li>Link status: <b>${ME.active ? "Live" : "Not live yet (waiting for approval)"}</b></li>`;
+  try{ $("qrImg").src = await buildPhotoQR(ME, link); }catch(e){ $("qrImg").alt = "QR code could not be created. Reload the page and try again."; }
+}
+$("copyLink").onclick = () => navigator.clipboard.writeText($("botLink").value).then(()=>toast("Link copied"),()=>{ $("botLink").select(); toast("Press Ctrl+C / ⌘C to copy"); });
+$("qrDownload").onclick = () => { const a=document.createElement("a"); a.href=$("qrImg").src; a.download=`qr-${ME.slug}.png`; a.click(); };
+
+/* ---------- profile ---------- */
+function renderProfile(){
+  const pv=$("pPhotoPreview");
+  if(ME.photo_path){ pv.src=photoUrl(ME.photo_path); pv.hidden=false; $("pPhotoRemove").hidden=false; } else { pv.hidden=true; $("pPhotoRemove").hidden=true; }
+  $("pName").value=ME.full_name; $("pPhone").value=fmtPhone(ME.phone); $("pEmail").value=ME.email;
+  $("pLicense").value=ME.license_no||""; $("pBooking").value=ME.booking_url||""; $("pAlerts").checked=ME.alerts_email;
+  $("profileMsg").textContent=""; renderMfa();
+}
+$("profileForm").onsubmit = async e => {
+  e.preventDefault();
+  const phone=$("pPhone").value.replace(/\D/g,""), name=$("pName").value.trim(), lic=$("pLicense").value.trim(), booking=$("pBooking").value.trim();
+  if(!name) return say("profileMsg","Enter your full name.");
+  if(phone.length!==10) return say("profileMsg","Enter a 10-digit phone number.");
+  if(!lic) return say("profileMsg","Enter your Florida license #. It must appear on your chatbot.");
+  if(booking && !/^https:\/\//.test(booking)) return say("profileMsg","The booking link must start with https://");
+  const { data, error } = await sb.from("agents").update({ full_name:name, phone, license_no:lic, booking_url:booking||null, alerts_email:$("pAlerts").checked })
+    .eq("id", ME.id).select().single();
+  if(error) return say("profileMsg","Could not save: " + error.message);
+  ME=data; $("whoName").textContent = ME.role==="admin" ? `${ME.full_name} (Admin)` : ME.full_name; setAvatar();
+  say("profileMsg","Saved. Your chatbot now shows these details.", true);
+};
+function resizePhoto(file){
+  return new Promise((ok,bad)=>{
+    if(!file) return bad(new Error("none"));
+    if(!/^image\/(png|jpeg|webp)$/.test(file.type)) return bad(new Error("type"));
+    if(file.size>10*1024*1024) return bad(new Error("size"));
+    const url=URL.createObjectURL(file), img=new Image();
+    img.onload=()=>{ const s=Math.min(img.width,img.height), D=400, c=document.createElement("canvas"); c.width=D; c.height=D;
+      c.getContext("2d").drawImage(img,(img.width-s)/2,(img.height-s)/2,s,s,0,0,D,D); URL.revokeObjectURL(url);
+      c.toBlob(b=>b?ok(b):bad(new Error("read")),"image/jpeg",0.86); };
+    img.onerror=()=>bad(new Error("read")); img.src=url;
+  });
+}
+$("pPhoto").onchange = async e => {
+  let blob;
+  try{ blob = await resizePhoto(e.target.files[0]); }
+  catch(err){ e.target.value=""; return say("profileMsg", err.message==="type"?"Use a JPG, PNG or WebP image.":err.message==="size"?"That photo is larger than 10 MB. Choose a smaller one.":"That photo could not be read. Try another one."); }
+  e.target.value=""; say("profileMsg","Uploading photo…", true);
+  const path=`${ME.id}/photo-${Date.now()}.jpg`, old=ME.photo_path;
+  const up = await sb.storage.from(C.photoBucket).upload(path, blob, { contentType:"image/jpeg", cacheControl:"3600", upsert:false });
+  if(up.error) return say("profileMsg","Upload failed: " + up.error.message);
+  const { data, error } = await sb.from("agents").update({ photo_path:path }).eq("id", ME.id).select().single();
+  if(error) return say("profileMsg","Could not save photo: " + error.message);
+  if(old) await sb.storage.from(C.photoBucket).remove([old]);
+  ME=data; setAvatar(); renderProfile(); say("profileMsg","Photo saved. Your chatbot and QR code now show it.", true);
+};
+$("pPhotoRemove").onclick = async () => {
+  const old=ME.photo_path;
+  const { data, error } = await sb.from("agents").update({ photo_path:null }).eq("id", ME.id).select().single();
+  if(error) return say("profileMsg","Could not remove photo: " + error.message);
+  if(old) await sb.storage.from(C.photoBucket).remove([old]);
+  ME=data; setAvatar(); renderProfile(); say("profileMsg","Photo removed. Your QR code shows your initials.", true);
+};
+$("pwReset").onclick = async () => {
+  const { error } = await sb.auth.resetPasswordForEmail(ME.email, { redirectTo: location.href.split("#")[0].split("?")[0] });
+  say("secMsg", error ? error.message : `A password-reset link was sent to ${ME.email}.`, !error);
+};
+
+/* ---------- 2-step verification (TOTP) ---------- */
+let pendingFactor = null;
+async function renderMfa(){
+  const { data } = await sb.auth.mfa.listFactors();
+  const on = data && data.totp && data.totp.length > 0;
+  $("mfaStatus").textContent = on ? "On. You'll enter a 6-digit code from your authenticator app each time you sign in." : "Off. Turn it on so a stolen password alone can't open your account.";
+  $("mfaToggle").textContent = on ? "Turn off 2-step verification" : "Set up 2-step verification";
+  $("mfaToggle").dataset.on = on ? "1" : "";
+  $("mfaToggle").dataset.factor = on ? data.totp[0].id : "";
+  if(on) $("mfaEnroll").hidden = true;
+}
+$("mfaToggle").onclick = async () => {
+  if($("mfaToggle").dataset.on){
+    const { error } = await sb.auth.mfa.unenroll({ factorId:$("mfaToggle").dataset.factor });
+    if(error) return say("secMsg", "Could not turn it off: " + error.message);
+    say("secMsg","2-step verification is off.", true); return renderMfa();
+  }
+  // remove any half-finished setup first
+  const { data:f } = await sb.auth.mfa.listFactors();
+  for(const x of (f?.all||[])) if(x.status==="unverified") await sb.auth.mfa.unenroll({ factorId:x.id });
+  const { data, error } = await sb.auth.mfa.enroll({ factorType:"totp", friendlyName:"Lead Bot " + Date.now() });
+  if(error) return say("secMsg","Could not start setup: " + error.message);
+  pendingFactor = data.id;
+  $("mfaQr").innerHTML = `<img alt="Authenticator setup code" src="${esc(data.totp.qr_code)}">`;
+  $("mfaSecret").textContent = data.totp.secret; $("mfaEnrollCode").value=""; $("mfaEnroll").hidden=false; $("secMsg").textContent="";
+};
+$("mfaEnrollVerify").onclick = async () => {
+  const code=$("mfaEnrollCode").value.trim();
+  if(!/^\d{6}$/.test(code)) return say("secMsg","The code must be 6 digits.");
+  const { error } = await sb.auth.mfa.challengeAndVerify({ factorId:pendingFactor, code });
+  if(error) return say("secMsg","That code didn't work. Check the time on your phone and try the next code.");
+  pendingFactor=null; say("secMsg","2-step verification is on.", true); renderMfa();
+};
+
+/* ---------- admin ---------- */
+function renderAdmin(){
+  const agents = AGENTS.filter(a=>a.role!=="admin");
+  $("adminChips").innerHTML = [["Active agents",agents.filter(a=>a.active).length],["Waiting for approval",agents.filter(a=>!a.active).length],["Total leads",LEADS.length],["Enrolled",LEADS.filter(l=>l.status==="enrolled").length],["New, not called",LEADS.filter(l=>l.status==="new").length]]
+    .map(([t,v])=>`<div class="chip" style="cursor:default"><b>${v}</b><span>${t}</span></div>`).join("");
+  $("agentTable").innerHTML = `<tr><th>Agent</th><th>Email</th><th>Phone</th><th>License #</th><th>Joined</th><th>Leads</th><th>G1</th><th>G2</th><th>G3</th><th>G4</th><th>Enrolled</th><th>Status</th><th></th></tr>` +
+    (agents.length ? agents.map(a=>{ const m=LEADS.filter(l=>l.agent_id===a.id);
+      return `<tr data-id="${esc(a.id)}"><td>${esc(a.full_name)}</td><td>${esc(a.email)}</td><td class="num">${fmtPhone(a.phone)}</td>
+      <td>${a.license_no ? esc(a.license_no) : '<span class="pill" style="color:var(--err)">Missing</span>'}</td>
+      <td class="num">${new Date(a.created_at).toLocaleDateString("en-US")}</td><td class="num">${m.length}</td>
+      ${["G1","G2","G3","G4"].map(g=>`<td class="num">${m.filter(l=>l.grp===g).length}</td>`).join("")}
+      <td class="num">${m.filter(l=>l.status==="enrolled").length}</td>
+      <td><span class="pill" style="color:${a.active?"var(--ok)":"var(--rev)"}">${a.active?"Active":"Inactive"}</span></td>
+      <td><button class="btn ${a.active?"danger":"ghost"} toggle" type="button">${a.active?"Deactivate":"Activate"}</button></td></tr>`; }).join("")
+    : `<tr><td colspan="13" class="empty">No agents yet. Send agents the portal link so they can create an account.</td></tr>`);
+  $("agentTable").querySelectorAll(".toggle").forEach(b => b.onclick = async () => {
+    const a=AGENTS.find(x=>x.id===b.closest("tr").dataset.id);
+    if(!a.active && !a.license_no) return say("adminMsg", `${a.full_name} needs to add a Florida license # in their profile before you can activate them.`);
+    const { error } = await sb.from("agents").update({ active:!a.active }).eq("id", a.id);
+    if(error) return say("adminMsg","Could not change status: " + error.message);
+    a.active=!a.active; say("adminMsg", `${a.full_name} ${a.active ? "activated. Their chatbot link is live." : "deactivated. Their chatbot link is paused."}`, true); renderAdmin();
+  });
+}
+
+/* ============ START ============ */
+sb.auth.onAuthStateChange((event) => { if(event==="PASSWORD_RECOVERY"){ recovering=true; showOnly("resetView"); } });
+(async () => {
+  const { data:{ session } } = await sb.auth.getSession();
+  if(recovering) return;
+  if(session) await afterSignIn(); else { setMode("in"); showOnly("authView"); }
+})();
+</script>
+</body>
+</html>
