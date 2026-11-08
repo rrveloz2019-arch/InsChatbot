@@ -59,6 +59,7 @@
       <div class="who"><div class="avatar" id="avatar"></div><div><div class="role" id="roleLabel"></div><h1 id="whoName"></h1></div></div>
       <div class="row"><button class="btn ghost" type="button" id="refresh">Refresh</button><button class="btn ghost" type="button" id="logout">Sign out</button></div>
     </div>
+    <div class="setupbar" id="setupBar" hidden><span id="setupBarText"></span> <button class="linkish" type="button" id="setupBarGo">Finish setup →</button></div>
     <div class="banner" id="pendingBanner" hidden>Your account is waiting for approval. Complete your profile (phone and Florida license #). Your chatbot link goes live once the admin approves you.</div>
     <nav class="tabs" role="tablist" id="tabs"></nav>
 
@@ -99,6 +100,14 @@
 
     <!-- PROFILE & SECURITY -->
     <div id="tab-profile" class="grid2" role="tabpanel" hidden>
+      <section class="card stack checklist" id="checklist" aria-labelledby="checklistTitle">
+        <div class="row" style="justify-content:space-between">
+          <h2 id="checklistTitle">Your setup checklist</h2>
+          <span class="pill" id="checklistCount"></span>
+        </div>
+        <div class="progress" aria-hidden="true"><div id="checklistBar"></div></div>
+        <ol id="checklistItems"></ol>
+      </section>
       <form class="card stack" id="profileForm" novalidate>
         <h2>My profile</h2>
         <div class="photoRow">
@@ -170,7 +179,7 @@ const fmtPhone = p => p && p.length===10 ? `(${p.slice(0,3)}) ${p.slice(3,6)}-${
 const fmtDate = d => new Date(d).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
 const initials = n => (n||"?").split(/\s+/).map(w=>w[0]).join("").slice(0,2).toUpperCase();
 const say = (id, text, ok) => { const m=$(id); m.textContent=text; m.style.color = ok ? "var(--ok)" : "var(--err)"; };
-function toast(msg){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),3500); }
+function toast(msg){ document.querySelectorAll(".toast").forEach(x=>x.remove()); const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),3500); }
 const photoUrl = path => path ? sb.storage.from(C.photoBucket).getPublicUrl(path).data.publicUrl : "";
 const botLinkFor = slug => new URL("chat.html?agent=" + encodeURIComponent(slug), location.href).href;
 
@@ -256,6 +265,7 @@ async function loadApp(){
   $("tabs").innerHTML = tabs.map(([k,l])=>`<button role="tab" data-tab="${k}" id="tabbtn-${k}">${l}</button>`).join("");
   $("tabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{ tab=b.dataset.tab; show(); });
   showOnly("appView");
+  renderChecklist();
   await reload();
 }
 async function reload(){
@@ -337,8 +347,8 @@ async function renderBot(){
   $("botStats").innerHTML = `<li>${LEADS.length} leads total</li><li>${LEADS.filter(l=>l.status==="enrolled").length} enrolled</li><li>${LEADS.filter(l=>l.lang==="es").length} chatted in Spanish</li><li>Link status: <b>${ME.active ? "Live" : "Not live yet (waiting for approval)"}</b></li>`;
   try{ $("qrImg").src = await buildPhotoQR(ME, link); }catch(e){ $("qrImg").alt = "QR code could not be created. Reload the page and try again."; }
 }
-$("copyLink").onclick = () => navigator.clipboard.writeText($("botLink").value).then(()=>toast("Link copied"),()=>{ $("botLink").select(); toast("Press Ctrl+C / ⌘C to copy"); });
-$("qrDownload").onclick = () => { const a=document.createElement("a"); a.href=$("qrImg").src; a.download=`qr-${ME.slug}.png`; a.click(); };
+$("copyLink").onclick = () => { markShared(); navigator.clipboard.writeText($("botLink").value).then(()=>toast("Link copied"),()=>{ $("botLink").select(); toast("Press Ctrl+C / ⌘C to copy"); }); };
+$("qrDownload").onclick = () => { markShared(); const a=document.createElement("a"); a.href=$("qrImg").src; a.download=`qr-${ME.slug}.png`; a.click(); };
 
 /* ---------- profile ---------- */
 function renderProfile(){
@@ -346,7 +356,7 @@ function renderProfile(){
   if(ME.photo_path){ pv.src=photoUrl(ME.photo_path); pv.hidden=false; $("pPhotoRemove").hidden=false; } else { pv.hidden=true; $("pPhotoRemove").hidden=true; }
   $("pName").value=ME.full_name; $("pPhone").value=fmtPhone(ME.phone); $("pEmail").value=ME.email;
   $("pLicense").value=ME.license_no||""; $("pBooking").value=ME.booking_url||""; $("pAlerts").checked=ME.alerts_email;
-  $("profileMsg").textContent=""; renderMfa();
+  $("profileMsg").textContent=""; renderMfa(); renderChecklist();
 }
 $("profileForm").onsubmit = async e => {
   e.preventDefault();
@@ -358,7 +368,7 @@ $("profileForm").onsubmit = async e => {
   const { data, error } = await sb.from("agents").update({ full_name:name, phone, license_no:lic, booking_url:booking||null, alerts_email:$("pAlerts").checked })
     .eq("id", ME.id).select().single();
   if(error) return say("profileMsg","Could not save: " + error.message);
-  ME=data; $("whoName").textContent = ME.role==="admin" ? `${ME.full_name} (Admin)` : ME.full_name; setAvatar();
+  ME=data; $("whoName").textContent = ME.role==="admin" ? `${ME.full_name} (Admin)` : ME.full_name; setAvatar(); renderChecklist();
   say("profileMsg","Saved. Your chatbot now shows these details.", true);
 };
 function resizePhoto(file){
@@ -397,6 +407,41 @@ $("pwReset").onclick = async () => {
   const { error } = await sb.auth.resetPasswordForEmail(ME.email, { redirectTo: location.href.split("#")[0].split("?")[0] });
   say("secMsg", error ? error.message : `A password-reset link was sent to ${ME.email}.`, !error);
 };
+
+/* ---------- agent setup checklist ---------- */
+const sharedKey = () => "leadbot_shared_" + ME.id;
+function markShared(){ try{ localStorage.setItem(sharedKey(), "1"); }catch(e){} renderChecklist(); }
+function hasShared(){ try{ return localStorage.getItem(sharedKey()) === "1"; }catch(e){ return false; } }
+function checklistItems(){
+  return [
+    { id:"email",   done:true, title:"Confirm your email", help:`Done. Your sign-in email is ${ME.email}.` },
+    { id:"photo",   done:!!ME.photo_path, title:"Add your photo", help:"Customers see your face in the chatbot and in your QR code.", action:"Add photo", go:()=>{ tab="profile"; show(); $("pPhoto").click(); } },
+    { id:"details", done:!!(ME.phone && ME.license_no), title:"Add your phone and Florida license #", help:"Required. Both appear on your chatbot.", action:"Add details", go:()=>{ tab="profile"; show(); (ME.phone ? $("pLicense") : $("pPhone")).focus(); } },
+    { id:"alerts",  done:!!ME.alerts_email, title:"Turn on new-lead email alerts", help:`New leads will be emailed to ${ME.email}.`, action:"Turn on", go:async()=>{
+        const { data, error } = await sb.from("agents").update({ alerts_email:true }).eq("id", ME.id).select().single();
+        if(error) return toast("Could not turn on alerts: " + error.message);
+        ME = data; renderProfile(); toast("New-lead email alerts are on"); } },
+    { id:"approved",done:!!ME.active, title:"Get approved by the admin", help: ME.active ? "Approved. Your chatbot link is live." : "The admin activates your account after checking your Florida license #. Nothing to do here except finish the steps above." },
+    { id:"share",   done:hasShared(), title:"Share your chatbot link or QR code", help:"Copy your link or download your QR code for ads, social media and flyers.", action:"Go to my chatbot", go:()=>{ tab="bot"; show(); } }
+  ];
+}
+function renderChecklist(){
+  if(!ME || ME.role==="admin"){ $("setupBar").hidden = true; return; }
+  const items = checklistItems(), done = items.filter(i=>i.done).length, total = items.length;
+  $("checklistCount").textContent = `${done} of ${total} done`;
+  $("checklistBar").style.width = Math.round(done/total*100) + "%";
+  const ol = $("checklistItems"); ol.innerHTML = "";
+  items.forEach((it, n) => {
+    const li = document.createElement("li"); li.className = it.done ? "done" : ""; li.dataset.item = it.id;
+    li.innerHTML = `<span class="mark">${it.done ? "✓" : n+1}</span><div class="txt"><b></b><span></span></div>`;
+    li.querySelector("b").textContent = it.title; li.querySelector(".txt span").textContent = it.help;
+    if(!it.done && it.action){ const b=document.createElement("button"); b.type="button"; b.className="btn ghost"; b.textContent=it.action; b.onclick=it.go; li.appendChild(b); }
+    ol.appendChild(li);
+  });
+  $("setupBar").hidden = done === total;
+  $("setupBarText").textContent = `Setup: ${done} of ${total} done.`;
+}
+$("setupBarGo").onclick = () => { tab="profile"; show(); $("checklist").scrollIntoView({ behavior:"smooth", block:"start" }); };
 
 /* ---------- 2-step verification (TOTP) ---------- */
 let pendingFactor = null;
