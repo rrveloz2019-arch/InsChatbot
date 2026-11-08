@@ -1,0 +1,335 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ACA Plan Check – Florida</title>
+<style>
+  :root{
+    --bg:#f4f6f9; --card:#ffffff; --ink:#1b2430; --muted:#5b6675; --line:#dde3ea;
+    --brand:#0b6e4f; --brand-ink:#ffffff; --bot:#eef3f1; --user:#0b6e4f; --user-ink:#fff;
+    --warn:#8a5a00; --warn-bg:#fff6e0; --err:#b3261e;
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --bg:#11161c; --card:#1a2129; --ink:#e7ecf1; --muted:#9aa6b2; --line:#2c3640;
+      --brand:#2fbf8a; --brand-ink:#0b1410; --bot:#212b33; --user:#2fbf8a; --user-ink:#0b1410;
+      --warn:#ffcf70; --warn-bg:#2d2512; --err:#ff8a80;
+    }
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);font:16px/1.45 system-ui,-apple-system,Segoe UI,Roboto,sans-serif}
+  .wrap{max-width:560px;margin:0 auto;padding:16px}
+  header{display:flex;justify-content:space-between;align-items:center;gap:8px;margin-bottom:12px}
+  header h1{font-size:18px;margin:0}
+  header small{display:block;color:var(--muted);font-size:12px}
+  .lang button{border:1px solid var(--line);background:var(--card);color:var(--ink);padding:6px 10px;border-radius:8px;cursor:pointer}
+  .lang button[aria-pressed="true"]{background:var(--brand);color:var(--brand-ink);border-color:var(--brand)}
+  .chat{background:var(--card);border:1px solid var(--line);border-radius:14px;padding:14px;min-height:420px;display:flex;flex-direction:column;gap:10px}
+  .msg{max-width:88%;padding:10px 12px;border-radius:12px;white-space:pre-line}
+  .bot{background:var(--bot);align-self:flex-start;border-top-left-radius:4px}
+  .user{background:var(--user);color:var(--user-ink);align-self:flex-end;border-top-right-radius:4px}
+  .opts{display:flex;flex-wrap:wrap;gap:8px}
+  .opts button{border:1px solid var(--brand);color:var(--brand);background:transparent;padding:9px 12px;border-radius:999px;cursor:pointer;font-size:15px}
+  .opts button:hover{background:var(--brand);color:var(--brand-ink)}
+  form.inline{display:flex;gap:8px;flex-wrap:wrap}
+  input,select{font:inherit;padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:var(--card);color:var(--ink);min-width:0}
+  form.inline input,form.inline select{flex:1 1 180px}
+  .btn{background:var(--brand);color:var(--brand-ink);border:0;padding:10px 14px;border-radius:8px;cursor:pointer;font-weight:600}
+  .btn[disabled]{opacity:.5;cursor:not-allowed}
+  .err{color:var(--err);font-size:14px}
+  .contact{display:grid;gap:8px;width:100%}
+  .consent{display:flex;gap:8px;align-items:flex-start;font-size:13px;color:var(--muted);background:var(--warn-bg);padding:10px;border-radius:8px}
+  .consent input{margin-top:3px;flex:none}
+  .note{font-size:12px;color:var(--muted);margin-top:12px}
+  .tag{display:inline-block;padding:2px 8px;border-radius:6px;background:var(--brand);color:var(--brand-ink);font-size:12px;font-weight:700}
+  details.admin{margin-top:16px;background:var(--card);border:1px solid var(--line);border-radius:12px;padding:10px}
+  details.admin summary{cursor:pointer;font-weight:600}
+  .tbl{overflow-x:auto;margin-top:8px}
+  table{border-collapse:collapse;font-size:12px;width:100%}
+  th,td{border-bottom:1px solid var(--line);padding:6px;text-align:left;white-space:nowrap}
+  .hp{position:absolute;left:-9999px;width:1px;height:1px;overflow:hidden}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <div>
+      <h1 id="title"></h1>
+      <small id="agencyLine"></small>
+    </div>
+    <div class="lang">
+      <button type="button" data-lang="en" aria-pressed="true">EN</button>
+      <button type="button" data-lang="es" aria-pressed="false">ES</button>
+    </div>
+  </header>
+
+  <main class="chat" id="chat" aria-live="polite"></main>
+
+  <p class="note" id="disclaimer"></p>
+
+  <details class="admin" id="admin">
+    <summary>Agent view (prototype) – leads saved in this browser</summary>
+    <p class="note">Prototype only. In production, leads go to the agent's private Google Sheet (see SETUP.md).</p>
+    <button class="btn" type="button" id="dl">Download CSV</button>
+    <button class="btn" type="button" id="clr" style="background:var(--err)">Clear test leads</button>
+    <div class="tbl"><table id="leadTable"></table></div>
+  </details>
+</div>
+
+<script>
+/* =========================================================
+   WHITE-LABEL SETTINGS – each agent who buys the bot edits these
+   ========================================================= */
+const CONFIG = {
+  agencyName:  "Sample Health Agency",       // agent's agency
+  agentName:   "Jane Doe",                   // licensed agent
+  licenseNo:   "FL-000000",                  // Florida license # (placeholder)
+  agentPhone:  "(555) 555-0100",
+  bookingUrl:  "https://calendly.com/your-link", // optional
+  sheetEndpoint: "",   // Google Apps Script web-app URL. Empty = save in browser only (prototype)
+  deadline: { en: "December 15, 2026", es: "15 de diciembre de 2026" }
+};
+
+/* 2026 HHS poverty guidelines (48 states + DC) – used for 2027 Marketplace coverage */
+const FPL_BASE = 15960, FPL_PER_PERSON = 5680;
+const fplFor = n => FPL_BASE + FPL_PER_PERSON * (n - 1);
+
+const T = {
+  en: {
+    title: "Florida Health Plan Check 2027",
+    agency: c => `${c.agencyName} · Licensed agent ${c.agentName} · Lic. ${c.licenseNo}`,
+    disclaimer: c => `This is not a government website. ${c.agencyName} is not affiliated with HealthCare.gov or CMS. Results are estimates only — final eligibility and prices are set by the Marketplace. Open enrollment for 2027 coverage in Florida ends ${c.deadline.en}.`,
+    hello: "Hi! 👋 In 2 minutes I can tell you which type of 2027 health plan you may qualify for in Florida. Ready?",
+    start: "Let's start",
+    zip: "What is your Florida ZIP code?",
+    zipErr: "Please enter a 5-digit Florida ZIP code (starts with 32, 33 or 34).",
+    hh: "How many people are in your tax household (you, spouse, dependents)?",
+    income: "What is your estimated total household income for 2027 (per year, before taxes)?",
+    incomeErr: "Please enter a yearly amount, numbers only (example: 35000).",
+    cov: "Do you have health coverage right now?",
+    covOpts: { none:"No coverage", marketplace:"Marketplace / Obamacare", employer:"Through a job", medicaid:"Medicaid", medicare:"Medicare" },
+    pri: "What matters most to you in a plan?",
+    priOpts: { lowpay:"Lowest monthly payment", lowded:"Low deductible when I'm sick", checkups:"Check-ups & routine care", balance:"A balance of both" },
+    contact: "Great! Where can a licensed agent reach you with your options?",
+    fname: "First name", phone: "Mobile phone", time: "Best time to call",
+    times: { morning:"Morning", afternoon:"Afternoon", evening:"Evening" },
+    consent: c => `By checking this box, I agree that ${c.agencyName} and its licensed agent ${c.agentName} may call and text me about health insurance at the number I provided, including with automated technology and prerecorded or artificial (AI) voice. Consent is not a condition of purchase. Message & data rates may apply. Reply STOP to opt out.`,
+    send: "Send my info",
+    reqErr: "Please fill in your first name, a 10-digit phone number, and check the consent box.",
+    thanks: (name, c) => `Thank you, ${name}! ${c.agentName} (licensed agent) will contact you soon.${c.bookingUrl ? `\nPrefer to pick a time? Book here: ${c.bookingUrl}` : ""}\nRemember: the deadline for coverage starting January 1 is ${c.deadline.en}.`,
+    you: "You may qualify for:",
+    groups: {
+      G1: "Group 1 – Possible $0 monthly premium plan",
+      G2: "Group 2 – Possible extra savings that lower your deductible (Silver plan with cost-sharing reductions)",
+      G3: "Group 3 – Low-cost plan for routine care (all Marketplace plans cover preventive check-ups at $0)",
+      G4: "Group 4 – Marketplace plan with a monthly payment and deductible",
+      GAP: "Agent review needed",
+      REVIEW: "Agent review needed"
+    },
+    groupNotes: {
+      G1: "Many $0-premium plans are Bronze plans with a higher deductible. Your agent will explain the trade-offs.",
+      G2: "These savings are only available on Silver plans and depend on your final income.",
+      G3: "Preventive care (check-ups, screenings, vaccines) is covered at no cost on every Marketplace plan, even before the deductible.",
+      G4: p => p > 400 ? "Your estimated income is above 400% of the poverty level, so you may not get a premium tax credit in 2027. An agent can review your options." : "You may get some help with the monthly premium. An agent can compare Bronze, Silver and Gold plans for you.",
+      GAP: "Your estimated income is below the level that qualifies for Marketplace savings in Florida. An agent will review other options (for example, children may qualify for Florida KidCare/Medicaid).",
+      REVIEW: "Because you already have job-based coverage, Medicare or Medicaid, an agent needs to review whether a Marketplace plan is right for you."
+    },
+    estimate: "This is an estimate, not a final eligibility decision."
+  },
+  es: {
+    title: "Revisión de Planes de Salud Florida 2027",
+    agency: c => `${c.agencyName} · Agente con licencia ${c.agentName} · Lic. ${c.licenseNo}`,
+    disclaimer: c => `Este no es un sitio web del gobierno. ${c.agencyName} no está afiliado a HealthCare.gov ni a CMS. Los resultados son solo estimados — la elegibilidad y los precios finales los determina el Mercado. La inscripción abierta para cobertura 2027 en Florida termina el ${c.deadline.es}.`,
+    hello: "¡Hola! 👋 En 2 minutos le digo para qué tipo de plan de salud 2027 podría calificar en Florida. ¿Listo?",
+    start: "Comencemos",
+    zip: "¿Cuál es su código postal (ZIP) de Florida?",
+    zipErr: "Escriba un código postal de Florida de 5 dígitos (empieza con 32, 33 o 34).",
+    hh: "¿Cuántas personas hay en su hogar para impuestos (usted, cónyuge, dependientes)?",
+    income: "¿Cuál es el ingreso total estimado de su hogar para 2027 (por año, antes de impuestos)?",
+    incomeErr: "Escriba una cantidad anual, solo números (ejemplo: 35000).",
+    cov: "¿Tiene seguro médico ahora?",
+    covOpts: { none:"No tengo seguro", marketplace:"Mercado / Obamacare", employer:"Por mi trabajo", medicaid:"Medicaid", medicare:"Medicare" },
+    pri: "¿Qué es lo más importante para usted en un plan?",
+    priOpts: { lowpay:"El pago mensual más bajo", lowded:"Deducible bajo cuando me enfermo", checkups:"Chequeos y cuidado de rutina", balance:"Un balance de ambos" },
+    contact: "¡Excelente! ¿Dónde puede contactarle un agente con licencia para darle sus opciones?",
+    fname: "Nombre", phone: "Teléfono celular", time: "Mejor hora para llamar",
+    times: { morning:"Mañana", afternoon:"Tarde", evening:"Noche" },
+    consent: c => `Al marcar esta casilla, acepto que ${c.agencyName} y su agente con licencia ${c.agentName} me llamen y envíen mensajes de texto sobre seguros de salud al número que proporcioné, incluso con tecnología automatizada y voz pregrabada o artificial (IA). El consentimiento no es condición de compra. Pueden aplicar tarifas de mensajes y datos. Responda STOP para cancelar.`,
+    send: "Enviar mi información",
+    reqErr: "Escriba su nombre, un teléfono de 10 dígitos y marque la casilla de consentimiento.",
+    thanks: (name, c) => `¡Gracias, ${name}! ${c.agentName} (agente con licencia) le contactará pronto.${c.bookingUrl ? `\n¿Prefiere escoger la hora? Reserve aquí: ${c.bookingUrl}` : ""}\nRecuerde: la fecha límite para cobertura desde el 1 de enero es el ${c.deadline.es}.`,
+    you: "Usted podría calificar para:",
+    groups: {
+      G1: "Grupo 1 – Posible plan con prima mensual de $0",
+      G2: "Grupo 2 – Posibles ahorros extra que bajan su deducible (plan Plata con reducción de costos compartidos)",
+      G3: "Grupo 3 – Plan económico para cuidado de rutina (todos los planes del Mercado cubren chequeos preventivos a $0)",
+      G4: "Grupo 4 – Plan del Mercado con pago mensual y deducible",
+      GAP: "Requiere revisión del agente",
+      REVIEW: "Requiere revisión del agente"
+    },
+    groupNotes: {
+      G1: "Muchos planes de prima $0 son planes Bronce con deducible más alto. Su agente le explicará las diferencias.",
+      G2: "Estos ahorros solo están disponibles en planes Plata y dependen de su ingreso final.",
+      G3: "El cuidado preventivo (chequeos, pruebas, vacunas) está cubierto sin costo en todos los planes del Mercado, incluso antes del deducible.",
+      G4: p => p > 400 ? "Su ingreso estimado está por encima del 400% del nivel de pobreza, por lo que podría no recibir crédito fiscal en 2027. Un agente puede revisar sus opciones." : "Podría recibir ayuda con la prima mensual. Un agente puede comparar planes Bronce, Plata y Oro para usted.",
+      GAP: "Su ingreso estimado está por debajo del nivel que califica para ahorros del Mercado en Florida. Un agente revisará otras opciones (por ejemplo, los niños podrían calificar para Florida KidCare/Medicaid).",
+      REVIEW: "Como ya tiene cobertura por trabajo, Medicare o Medicaid, un agente debe revisar si un plan del Mercado es adecuado para usted."
+    },
+    estimate: "Esto es un estimado, no una decisión final de elegibilidad."
+  }
+};
+
+/* ---------- Segmentation (Florida = no Medicaid expansion) ---------- */
+function classify({ fplPct, coverage, priority }) {
+  if (["employer","medicare","medicaid"].includes(coverage)) return "REVIEW";
+  if (fplPct < 100) return "GAP";                       // FL coverage gap
+  if (priority === "checkups") return "G3";
+  if (priority === "lowded" && fplPct <= 250) return "G2";
+  if (priority === "lowpay" && fplPct <= 150) return "G1";
+  if (fplPct > 250) return "G4";
+  return fplPct <= 150 ? "G1" : "G2";                   // "balance" or other
+}
+
+/* ---------- State ---------- */
+let lang = "en";
+let lead = {};
+const chat = document.getElementById("chat");
+const t = () => T[lang];
+
+function bot(text){ const d=document.createElement("div"); d.className="msg bot"; d.textContent=text; chat.appendChild(d); d.scrollIntoView({block:"end"}); return d; }
+function me(text){ const d=document.createElement("div"); d.className="msg user"; d.textContent=text; chat.appendChild(d); }
+function clearControls(){ chat.querySelectorAll(".ctl").forEach(n=>n.remove()); }
+function options(map, onPick){
+  const box=document.createElement("div"); box.className="opts ctl";
+  Object.entries(map).forEach(([k,label])=>{
+    const b=document.createElement("button"); b.type="button"; b.textContent=label; b.dataset.value=k;
+    b.onclick=()=>{ clearControls(); me(label); onPick(k,label); };
+    box.appendChild(b);
+  });
+  chat.appendChild(box);
+}
+function textInput({type="text", placeholder="", inputmode, validate, errMsg, onOk, name}){
+  const f=document.createElement("form"); f.className="inline ctl"; f.noValidate=true;
+  const i=document.createElement("input"); i.type=type; i.placeholder=placeholder; i.name=name||"answer";
+  if(inputmode) i.inputMode=inputmode;
+  const b=document.createElement("button"); b.className="btn"; b.textContent="→"; b.setAttribute("aria-label","Next");
+  const e=document.createElement("div"); e.className="err"; e.style.flexBasis="100%";
+  f.append(i,b,e);
+  f.onsubmit=ev=>{ ev.preventDefault(); const v=i.value.trim(); if(!validate(v)){ e.textContent=errMsg; return; } clearControls(); me(v); onOk(v); };
+  chat.appendChild(f); i.focus();
+}
+
+function render(){
+  document.documentElement.lang = lang;
+  document.getElementById("title").textContent = t().title;
+  document.getElementById("agencyLine").textContent = t().agency(CONFIG);
+  document.getElementById("disclaimer").textContent = t().disclaimer(CONFIG);
+  document.querySelectorAll(".lang button").forEach(b=>b.setAttribute("aria-pressed", b.dataset.lang===lang));
+}
+
+function start(){
+  chat.innerHTML=""; lead={ lang };
+  bot(t().hello);
+  options({ go: t().start }, askZip);
+}
+function askZip(){
+  bot(t().zip);
+  textInput({ inputmode:"numeric", placeholder:"33101", name:"zip",
+    validate:v=>/^3[234]\d{3}$/.test(v), errMsg:t().zipErr,
+    onOk:v=>{ lead.zip=v; askHH(); } });
+}
+function askHH(){
+  bot(t().hh);
+  const m={}; for(let n=1;n<=8;n++) m[n]=String(n)+(n===8?"+":"");
+  options(m, k=>{ lead.household=Number(k); askIncome(); });
+}
+function askIncome(){
+  bot(t().income);
+  textInput({ inputmode:"numeric", placeholder:"35000", name:"income",
+    validate:v=>{ const n=Number(v.replace(/[$,\s]/g,"")); return Number.isFinite(n) && n>=0 && n<10000000; },
+    errMsg:t().incomeErr,
+    onOk:v=>{ lead.income=Number(v.replace(/[$,\s]/g,"")); lead.fplPct=Math.round(lead.income/fplFor(lead.household)*100); askCoverage(); } });
+}
+function askCoverage(){ bot(t().cov); options(t().covOpts, k=>{ lead.coverage=k; askPriority(); }); }
+function askPriority(){ bot(t().pri); options(t().priOpts, k=>{ lead.priority=k; askContact(); }); }
+
+function askContact(){
+  bot(t().contact);
+  const f=document.createElement("form"); f.className="contact ctl"; f.noValidate=true;
+  f.innerHTML = `
+    <input name="fname" autocomplete="given-name" placeholder="${t().fname}">
+    <input name="phone" type="tel" autocomplete="tel" inputmode="tel" placeholder="${t().phone}">
+    <select name="time" aria-label="${t().time}">
+      ${Object.entries(t().times).map(([k,v])=>`<option value="${k}">${t().time}: ${v}</option>`).join("")}
+    </select>
+    <div class="hp" aria-hidden="true"><label>Website<input name="website" tabindex="-1" autocomplete="off"></label></div>
+    <label class="consent"><input type="checkbox" name="consent"><span></span></label>
+    <button class="btn" type="submit">${t().send}</button>
+    <div class="err"></div>`;
+  const consentText = t().consent(CONFIG);
+  f.querySelector(".consent span").textContent = consentText;
+  f.onsubmit = async ev => {
+    ev.preventDefault();
+    const fd=new FormData(f);
+    const name=(fd.get("fname")||"").toString().trim();
+    const phone=(fd.get("phone")||"").toString().replace(/\D/g,"").replace(/^1(?=\d{10}$)/,"");
+    const ok = name.length>0 && phone.length===10 && fd.get("consent");
+    if(!ok){ f.querySelector(".err").textContent=t().reqErr; return; }
+    if(fd.get("website")) return;               // honeypot: bots fill hidden field
+    const now=new Date().toISOString();
+    Object.assign(lead,{
+      id: crypto.randomUUID ? crypto.randomUUID() : String(Date.now()),
+      createdAt: now, firstName:name, phone, bestTime:fd.get("time"),
+      consent:true, consentAt:now, consentText, pageUrl:location.href, userAgent:navigator.userAgent
+    });
+    lead.group = classify(lead);
+    clearControls(); me(`${name} · ${phone}`);
+    await saveLead(lead);
+    showResult();
+  };
+  chat.appendChild(f);
+}
+
+function showResult(){
+  const g=lead.group, notes=t().groupNotes[g];
+  const d=bot(""); d.innerHTML="";
+  const p1=document.createElement("div"); p1.textContent=t().you;
+  const tag=document.createElement("div"); tag.className="tag"; tag.textContent=t().groups[g]; tag.dataset.group=g; tag.id="resultGroup";
+  const p2=document.createElement("div"); p2.style.marginTop="6px"; p2.textContent= typeof notes==="function" ? notes(lead.fplPct) : notes;
+  const p3=document.createElement("div"); p3.style.cssText="margin-top:6px;font-size:13px;opacity:.8"; p3.textContent=t().estimate;
+  d.append(p1,tag,p2,p3);
+  bot(t().thanks(lead.firstName, CONFIG));
+  renderTable();
+}
+
+/* ---------- Saving ---------- */
+const KEY="aca_leads_v1";
+function getLeads(){ try{ return JSON.parse(localStorage.getItem(KEY)||"[]"); }catch{ return []; } }
+async function saveLead(l){
+  try{ const all=getLeads(); all.push(l); localStorage.setItem(KEY, JSON.stringify(all)); }catch{}
+  if(CONFIG.sheetEndpoint){
+    try{
+      // text/plain avoids a CORS preflight; Apps Script reads e.postData.contents
+      await fetch(CONFIG.sheetEndpoint,{ method:"POST", mode:"no-cors", headers:{ "Content-Type":"text/plain;charset=utf-8" }, body:JSON.stringify(l) });
+    }catch(e){ console.warn("Sheet save failed", e); }
+  }
+}
+const COLS=["createdAt","group","firstName","phone","bestTime","zip","household","income","fplPct","coverage","priority","lang","consent","consentAt","consentText"];
+function renderTable(){
+  const rows=getLeads(), tb=document.getElementById("leadTable");
+  tb.innerHTML = `<tr>${COLS.map(c=>`<th>${c}</th>`).join("")}</tr>` +
+    rows.map(r=>`<tr>${COLS.map(c=>`<td>${String(r[c]??"").replace(/[<>&]/g,s=>({"<":"&lt;",">":"&gt;","&":"&amp;"}[s])).slice(0,60)}</td>`).join("")}</tr>`).join("");
+}
+document.getElementById("dl").onclick=()=>{
+  const esc=v=>`"${String(v??"").replace(/"/g,'""')}"`;
+  const csv=[COLS.join(","), ...getLeads().map(r=>COLS.map(c=>esc(r[c])).join(","))].join("\n");
+  const a=document.createElement("a"); a.href=URL.createObjectURL(new Blob([csv],{type:"text/csv"})); a.download="aca-leads.csv"; a.click();
+};
+document.getElementById("clr").onclick=()=>{ try{ localStorage.removeItem(KEY); }catch{} renderTable(); };
+
+document.querySelectorAll(".lang button").forEach(b=>b.onclick=()=>{ lang=b.dataset.lang; render(); start(); });
+render(); start(); renderTable();
+</script>
+</body>
+</html>

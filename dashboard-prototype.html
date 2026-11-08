@@ -1,0 +1,453 @@
+<title>Lead Bot Agent Portal</title>
+<meta name="claude:viewport-fit-sides" content="cover">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Atkinson+Hyperlegible:wght@400;700&family=Bricolage+Grotesque:wght@600;700&display=swap">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+  /* Layout: top bar + tab row + one working panel; tables scroll inside their own box */
+  :root{
+    --bg:#f3f6f5; --card:#ffffff; --ink:#18231f; --muted:#56635d; --line:#dbe3df;
+    --brand:#0b6e4f; --brand-ink:#ffffff; --brand-soft:#e3f1eb;
+    --g1:#0b6e4f; --g2:#2457a6; --g3:#7a4fb5; --g4:#a35a00; --gap:#b3261e; --rev:#5b6675;
+    --ok:#1f7a3a; --warn-bg:#fff6e0; --warn:#7a5000; --err:#b3261e;
+    --display:'Bricolage Grotesque',system-ui,sans-serif;
+    --body:'Atkinson Hyperlegible',system-ui,-apple-system,'Segoe UI',Roboto,sans-serif;
+  }
+  @media (prefers-color-scheme: dark){ :root:not([data-theme="light"]){
+    --bg:#101614; --card:#18201d; --ink:#e6eeea; --muted:#9aaaa3; --line:#2b3632;
+    --brand:#35c08f; --brand-ink:#08140f; --brand-soft:#1d332a;
+    --g1:#35c08f; --g2:#79a8f0; --g3:#b99bea; --g4:#f0b35c; --gap:#ff8a80; --rev:#a6b2bd;
+    --ok:#5fd48a; --warn-bg:#2d2512; --warn:#ffcf70; --err:#ff8a80; color-scheme:dark } }
+  :root[data-theme="dark"]{
+    --bg:#101614; --card:#18201d; --ink:#e6eeea; --muted:#9aaaa3; --line:#2b3632;
+    --brand:#35c08f; --brand-ink:#08140f; --brand-soft:#1d332a;
+    --g1:#35c08f; --g2:#79a8f0; --g3:#b99bea; --g4:#f0b35c; --gap:#ff8a80; --rev:#a6b2bd;
+    --ok:#5fd48a; --warn-bg:#2d2512; --warn:#ffcf70; --err:#ff8a80; color-scheme:dark }
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  body{background:var(--bg);color:var(--ink);font:15px/1.45 var(--body);margin:0}
+  .wrap{max-width:1100px;margin:0 auto;padding-block:16px;padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px))}
+  h1,h2,h3{font-family:var(--display);text-wrap:balance;margin:0}
+  h1{font-size:22px} h2{font-size:18px} h3{font-size:15px}
+  .demo{background:var(--warn-bg);color:var(--warn);border-radius:10px;padding:8px 12px;font-size:13px;font-weight:700;margin-bottom:14px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;padding:16px}
+  .muted{color:var(--muted)} .small{font-size:13px}
+  .stack{display:grid;gap:14px}
+  .row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
+  .grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,320px),1fr));gap:14px}
+  label{display:grid;gap:4px;font-size:13px;color:var(--muted)}
+  input,select{font:inherit;color:var(--ink);background:var(--card);border:1px solid var(--line);border-radius:8px;padding:9px 10px;min-width:0}
+  .btn{font:inherit;font-weight:700;border:0;border-radius:8px;padding:9px 14px;cursor:pointer;background:var(--brand);color:var(--brand-ink)}
+  .btn.ghost{background:transparent;color:var(--brand);border:1px solid var(--brand)}
+  .btn.danger{background:transparent;color:var(--err);border:1px solid var(--err)}
+  button:focus-visible,input:focus-visible,select:focus-visible,a:focus-visible{outline:2px solid var(--brand);outline-offset:2px}
+  /* login */
+  .login{max-width:400px;margin:40px auto}
+  .login form{display:grid;gap:12px;margin-top:12px}
+  /* top bar */
+  .top{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:12px}
+  .who{display:flex;gap:10px;align-items:center}
+  .avatar{width:36px;height:36px;border-radius:50%;background:var(--brand-soft);color:var(--brand);display:grid;place-items:center;font-weight:700}
+  .role{font-size:11px;font-weight:700;letter-spacing:.06em;text-transform:uppercase;color:var(--muted)}
+  .tabs{display:flex;gap:4px;border-bottom:1px solid var(--line);margin-bottom:16px;overflow-x:auto}
+  .tabs button{font:inherit;background:none;border:0;border-bottom:3px solid transparent;padding:10px 12px;color:var(--muted);cursor:pointer;white-space:nowrap}
+  .tabs button[aria-selected="true"]{color:var(--ink);border-color:var(--brand);font-weight:700}
+  /* summary */
+  .chips{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px}
+  .chip{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:10px 12px;cursor:pointer;text-align:left;font:inherit;color:var(--ink)}
+  .chip[aria-pressed="true"]{border-color:var(--brand);box-shadow:inset 0 0 0 1px var(--brand)}
+  .chip b{display:block;font-family:var(--display);font-size:24px;font-variant-numeric:tabular-nums}
+  .chip span{font-size:12px;color:var(--muted)}
+  .dot{display:inline-block;width:9px;height:9px;border-radius:50%;margin-right:6px;vertical-align:middle}
+  .tbl{overflow-x:auto;border:1px solid var(--line);border-radius:10px;background:var(--card)}
+  table{border-collapse:collapse;width:100%;font-size:14px}
+  th,td{padding:9px 10px;border-bottom:1px solid var(--line);text-align:left;white-space:nowrap;vertical-align:middle}
+  th{font-size:12px;letter-spacing:.04em;text-transform:uppercase;color:var(--muted);font-weight:700}
+  td.num{font-variant-numeric:tabular-nums}
+  tr:last-child td{border-bottom:0}
+  .pill{display:inline-block;font-size:12px;font-weight:700;padding:2px 8px;border-radius:999px;border:1px solid currentColor}
+  .status-new{color:var(--g2)} .status-called{color:var(--g4)} .status-enrolled{color:var(--ok)} .status-lost{color:var(--rev)}
+  .linkbox{display:flex;gap:8px;flex-wrap:wrap}
+  .linkbox input{flex:1 1 260px;font-family:ui-monospace,Menlo,monospace;font-size:13px}
+  #qrImg{display:block;width:300px;max-width:100%;height:auto;border-radius:12px;border:1px solid var(--line)}
+  .photoRow{display:flex;gap:12px;align-items:center;flex-wrap:wrap}
+  .photo{width:72px;height:72px;border-radius:50%;object-fit:cover;background:var(--brand-soft);border:2px solid var(--line)}
+  .avatar img{width:100%;height:100%;border-radius:50%;object-fit:cover}
+  .switch{display:flex;gap:10px;align-items:center;color:var(--ink);font-size:15px}
+  .switch input{width:20px;height:20px}
+  .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(16px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--bg);padding:10px 14px;border-radius:10px;font-size:14px;max-width:calc(100% - 32px);z-index:20}
+  .sec li{margin:4px 0}
+  .empty{padding:20px;text-align:center;color:var(--muted)}
+  @media (prefers-reduced-motion:no-preference){ .toast{animation:up .2s ease-out} @keyframes up{from{opacity:0;transform:translate(-50%,8px)}to{opacity:1;transform:translate(-50%,0)}} }
+</style>
+
+<div class="wrap">
+  <div class="demo" role="note">DEMO / PROTOTYPE · Sample agents and leads are fictional. Nothing here is sent anywhere. Changes are kept only in your browser.</div>
+
+  <!-- LOGIN -->
+  <section id="loginView" class="login card">
+    <h1>Agent Portal</h1>
+    <p class="muted small">Sign in to see your chatbot and your leads.</p>
+    <form id="loginForm" novalidate>
+      <label>Email <input id="email" type="email" autocomplete="username" value="maria.lopez@example.com"></label>
+      <label>Password <input id="password" type="password" autocomplete="current-password" value="demo-password"></label>
+      <label id="codeWrap" hidden>6-digit code from your authenticator app <input id="code" inputmode="numeric" maxlength="6" placeholder="123456"></label>
+      <div class="err small" id="loginErr" style="color:var(--err)"></div>
+      <button class="btn" type="submit" id="signin">Sign in as agent (demo)</button>
+      <button class="btn ghost" type="button" id="signinAdmin">Sign in as admin (demo)</button>
+      <p class="small muted">In the real version, sign-in uses Supabase Auth: hashed passwords, optional 2-step verification, and automatic sign-out after inactivity.</p>
+    </form>
+  </section>
+
+  <!-- APP -->
+  <section id="appView" hidden>
+    <div class="top">
+      <div class="who"><div class="avatar" id="avatar">ML</div><div><div class="role" id="roleLabel">Agent</div><h1 id="whoName">Maria Lopez</h1></div></div>
+      <div class="row"><button class="btn ghost" type="button" id="simulate">Simulate a new lead</button><button class="btn ghost" type="button" id="logout">Sign out</button></div>
+    </div>
+    <nav class="tabs" role="tablist" id="tabs"></nav>
+
+    <!-- LEADS -->
+    <div id="tab-leads" class="stack" role="tabpanel">
+      <div class="chips" id="groupChips"></div>
+      <div class="row">
+        <label style="flex:1 1 200px">Search name or phone <input id="search" placeholder="e.g. Rosa or 305"></label>
+        <label style="flex:0 1 180px">Status
+          <select id="statusFilter"><option value="">All statuses</option><option value="new">New</option><option value="called">Called</option><option value="enrolled">Enrolled</option><option value="lost">Not interested</option></select>
+        </label>
+        <div class="row" style="align-self:flex-end">
+          <button class="btn ghost" type="button" id="copyCsv">Copy as CSV</button>
+          <button class="btn ghost" type="button" id="sheetBtn">Send to Google Sheet</button>
+        </div>
+      </div>
+      <div class="tbl"><table id="leadTable"></table></div>
+      <p class="small muted">Group is an estimate from the chatbot answers. Confirm eligibility on HealthCare.gov before recommending a plan.</p>
+    </div>
+
+    <!-- CHATBOT -->
+    <div id="tab-bot" class="grid2" role="tabpanel" hidden>
+      <div class="card stack">
+        <h2>My chatbot link</h2>
+        <p class="muted small">Put this link in your Facebook ads, Instagram bio, WhatsApp status and text messages. Every lead from it comes only to you.</p>
+        <div class="linkbox"><input id="botLink" readonly aria-label="Chatbot link"><button class="btn" type="button" id="copyLink">Copy link</button></div>
+        <a id="openBot" href="https://claude.ai/artifact/PCpaYhCRn81qs4V9YeYFF6" target="_blank" rel="noopener">Open the chatbot demo ↗</a>
+        <h3>QR code with your photo</h3>
+        <div id="qrSrc" hidden></div>
+        <img id="qrImg" alt="QR code that opens your chatbot, with your photo in the center" width="300" height="360">
+        <p class="small muted">Customers see your face, so they know who will call them. To save it for flyers or business cards, right-click the image (computer) or press and hold it (phone). Add or change your photo in <b>Profile &amp; security</b>.</p>
+      </div>
+      <div class="card stack">
+        <h2>What customers see</h2>
+        <div class="card" style="background:var(--bg)">
+          <h3>Florida Health Plan Check 2027</h3>
+          <div class="small muted" id="botPreview"></div>
+        </div>
+        <p class="small muted">Your name, license # and phone come from your profile automatically. Update the profile and the chatbot changes too.</p>
+        <h3>This week</h3>
+        <ul class="small" id="botStats"></ul>
+      </div>
+    </div>
+
+    <!-- PROFILE & SECURITY -->
+    <div id="tab-profile" class="grid2" role="tabpanel" hidden>
+      <form class="card stack" id="profileForm" novalidate>
+        <h2>My profile</h2>
+        <div class="photoRow">
+          <img class="photo" id="pPhotoPreview" alt="Your profile photo">
+          <label style="flex:1 1 200px">Profile photo (JPG or PNG, appears on your QR code)
+            <input id="pPhoto" type="file" accept="image/png,image/jpeg,image/webp">
+          </label>
+          <button class="btn ghost" type="button" id="pPhotoRemove">Remove photo</button>
+        </div>
+        <label>Full name <input id="pName" autocomplete="name"></label>
+        <label>Phone <input id="pPhone" type="tel" autocomplete="tel"></label>
+        <label>Email <input id="pEmail" type="email" autocomplete="email"></label>
+        <label>Florida license # (required by Florida to appear on the chatbot) <input id="pLicense"></label>
+        <label>Booking link (optional) <input id="pBooking" placeholder="https://calendly.com/…"></label>
+        <div class="small" id="profileMsg"></div>
+        <button class="btn" type="submit">Save profile</button>
+      </form>
+      <div class="stack">
+        <div class="card stack">
+          <h2>New-lead alerts</h2>
+          <label class="switch"><input type="checkbox" id="alertEmail" checked> Email me every new lead</label>
+          <p class="small muted" id="alertTo"></p>
+        </div>
+        <div class="card stack sec">
+          <h2>Security</h2>
+          <label class="switch"><input type="checkbox" id="mfa"> 2-step verification (authenticator app)</label>
+          <button class="btn ghost" type="button" id="pwBtn">Change password</button>
+          <div class="small" id="pwMsg"></div>
+          <h3>Recent sign-ins</h3>
+          <ul class="small muted" id="signins"></ul>
+          <h3>How your leads are protected</h3>
+          <ul class="small">
+            <li>Only you can see your leads. The database enforces this, not just the screen.</li>
+            <li>Data is encrypted in transit (HTTPS) and at rest.</li>
+            <li>Leads are accepted only with phone consent, a valid phone number and a Florida ZIP code.</li>
+            <li>No SSNs or medical information are collected.</li>
+          </ul>
+        </div>
+      </div>
+    </div>
+
+    <!-- ADMIN -->
+    <div id="tab-admin" class="stack" role="tabpanel" hidden>
+      <div class="chips" id="adminChips"></div>
+      <div class="card stack">
+        <h2>Agents</h2>
+        <div class="tbl"><table id="agentTable"></table></div>
+      </div>
+      <form class="card stack" id="addAgent" novalidate>
+        <h2>Add an agent</h2>
+        <div class="grid2">
+          <label>Full name <input id="aName"></label>
+          <label>Email <input id="aEmail" type="email"></label>
+          <label>Phone <input id="aPhone" type="tel"></label>
+          <label>Florida license # <input id="aLicense"></label>
+        </div>
+        <div class="small" id="addMsg"></div>
+        <button class="btn" type="submit">Add agent and send invite</button>
+      </form>
+    </div>
+  </section>
+</div>
+
+<script>
+/* ---------------- sample data (fictional) ---------------- */
+const GROUPS = {
+  G1:{label:"Group 1 · $0 premium", color:"var(--g1)"},
+  G2:{label:"Group 2 · Low deductible", color:"var(--g2)"},
+  G3:{label:"Group 3 · Check-ups", color:"var(--g3)"},
+  G4:{label:"Group 4 · Pays some", color:"var(--g4)"},
+  GAP:{label:"Coverage gap", color:"var(--gap)"},
+  REVIEW:{label:"Needs review", color:"var(--rev)"}
+};
+const STATUS = { new:"New", called:"Called", enrolled:"Enrolled", lost:"Not interested" };
+const SEED = {
+  agents:[
+    {id:"a1", slug:"maria-lopez", name:"Maria Lopez", email:"maria.lopez@example.com", phone:"(305) 555-0142", license:"FL-A123456", booking:"https://calendly.com/maria-lopez", active:true, alerts:true, mfa:false},
+    {id:"a2", slug:"james-carter", name:"James Carter", email:"james.carter@example.com", phone:"(407) 555-0177", license:"FL-B654321", booking:"", active:true, alerts:true, mfa:true},
+    {id:"a3", slug:"ana-rivera", name:"Ana Rivera", email:"ana.rivera@example.com", phone:"(813) 555-0110", license:"", booking:"", active:false, alerts:true, mfa:false}
+  ],
+  leads:[
+    ["a1","2026-11-08T14:12","Rosa M.","3055550101","G1","morning","es",128,"new"],
+    ["a1","2026-11-08T11:40","Daniel P.","3055550102","G2","evening","en",182,"new"],
+    ["a1","2026-11-07T19:05","Luz H.","7865550103","G2","afternoon","es",205,"called"],
+    ["a1","2026-11-07T09:22","Kevin T.","3055550104","G4","evening","en",310,"called"],
+    ["a1","2026-11-06T16:48","Carmen R.","7865550105","G1","morning","es",112,"enrolled"],
+    ["a1","2026-11-06T10:03","Mike S.","9545550106","G3","afternoon","en",360,"new"],
+    ["a1","2026-11-05T13:30","Yolanda F.","3055550107","GAP","morning","es",74,"called"],
+    ["a1","2026-11-05T08:55","Peter W.","9545550108","G4","evening","en",421,"lost"],
+    ["a1","2026-11-04T18:20","Gloria V.","7865550109","G2","evening","es",161,"enrolled"],
+    ["a1","2026-11-03T12:10","Tom B.","3055550110","REVIEW","afternoon","en",240,"new"],
+    ["a2","2026-11-08T09:15","Sarah K.","4075550111","G1","morning","en",140,"new"],
+    ["a2","2026-11-07T15:00","Luis A.","4075550112","G2","afternoon","es",199,"called"],
+    ["a2","2026-11-06T17:45","Brenda C.","3215550113","G4","evening","en",288,"enrolled"]
+  ].map(([agent,createdAt,name,phone,group,bestTime,lang,fpl,status],i)=>({id:"l"+(i+1),agent,createdAt,name,phone,group,bestTime,lang,fpl,status}))
+};
+const BOT_BASE = "https://yourleadbot.com/?agent=";
+
+/* ---------------- state (browser only, demo) ---------------- */
+const KEY="leadbot_portal_demo_v1";
+let db; try{ db=JSON.parse(localStorage.getItem(KEY)) }catch{}; if(!db||!db.agents) db=structuredClone(SEED);
+const save=()=>{ try{ localStorage.setItem(KEY,JSON.stringify(db)) }catch{} };
+let session=null, tab="leads", groupFilter="";
+
+const $=id=>document.getElementById(id);
+const esc=s=>String(s??"").replace(/[&<>"]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const fmtPhone=p=>`(${p.slice(0,3)}) ${p.slice(3,6)}-${p.slice(6)}`;
+const fmtDate=d=>new Date(d).toLocaleString("en-US",{month:"short",day:"numeric",hour:"numeric",minute:"2-digit"});
+const me=()=>db.agents.find(a=>a.id===session.agentId);
+function toast(msg){ const t=document.createElement("div"); t.className="toast"; t.textContent=msg; document.body.appendChild(t); setTimeout(()=>t.remove(),3200); }
+
+/* ---------------- login ---------------- */
+function signIn(role){
+  const email=$("email").value.trim().toLowerCase();
+  if(role==="admin"){ session={role:"admin",agentId:"a1"}; return enter(); }
+  const a=db.agents.find(x=>x.email.toLowerCase()===email);
+  if(!a){ $("loginErr").textContent="No agent account uses that email. Check the spelling or ask your admin for an invite."; return; }
+  if(!a.active){ $("loginErr").textContent="This account is not active yet. Your admin needs to approve it."; return; }
+  if(a.mfa && $("codeWrap").hidden){ $("codeWrap").hidden=false; $("loginErr").textContent="Enter the 6-digit code from your authenticator app (demo: any 6 digits)."; return; }
+  if(a.mfa && !/^\d{6}$/.test($("code").value)){ $("loginErr").textContent="The code must be 6 digits."; return; }
+  session={role:"agent",agentId:a.id}; enter();
+}
+$("loginForm").onsubmit=e=>{e.preventDefault(); signIn("agent");};
+$("signinAdmin").onclick=()=>signIn("admin");
+$("email").oninput=()=>{ $("codeWrap").hidden=true; $("loginErr").textContent=""; };
+$("logout").onclick=()=>{ session=null; $("appView").hidden=true; $("loginView").hidden=false; };
+
+function enter(){
+  $("loginView").hidden=true; $("appView").hidden=false;
+  const isAdmin=session.role==="admin";
+  const name=isAdmin?"Account Owner":me().name;
+  $("whoName").textContent=name; $("roleLabel").textContent=isAdmin?"Admin":"Agent";
+  setAvatar(isAdmin?null:me());
+  const tabs=isAdmin?[["admin","Agents & totals"],["leads","All leads"]]:[["leads","My leads"],["bot","My chatbot"],["profile","Profile & security"]];
+  tab=tabs[0][0]; groupFilter="";
+  $("tabs").innerHTML=tabs.map(([k,l])=>`<button role="tab" data-tab="${k}" id="tabbtn-${k}">${l}</button>`).join("");
+  $("tabs").querySelectorAll("button").forEach(b=>b.onclick=()=>{tab=b.dataset.tab; show();});
+  show();
+}
+function show(){
+  ["leads","bot","profile","admin"].forEach(k=>$("tab-"+k).hidden=k!==tab);
+  $("tabs").querySelectorAll("button").forEach(b=>b.setAttribute("aria-selected",b.dataset.tab===tab));
+  ({leads:renderLeads,bot:renderBot,profile:renderProfile,admin:renderAdmin})[tab]();
+}
+
+/* ---------------- leads ---------------- */
+const visibleLeads=()=>session.role==="admin"?db.leads:db.leads.filter(l=>l.agent===session.agentId); // real version: enforced by database row-level security
+function renderLeads(){
+  const mine=visibleLeads();
+  const counts=k=>mine.filter(l=>l.group===k).length;
+  $("groupChips").innerHTML=`<button class="chip" data-g="" aria-pressed="${groupFilter===""}"><b>${mine.length}</b><span>All leads</span></button>`+
+    Object.entries(GROUPS).map(([k,g])=>`<button class="chip" data-g="${k}" aria-pressed="${groupFilter===k}"><b>${counts(k)}</b><span><i class="dot" style="background:${g.color}"></i>${g.label}</span></button>`).join("");
+  $("groupChips").querySelectorAll(".chip").forEach(c=>c.onclick=()=>{groupFilter=c.dataset.g; renderLeads();});
+  const q=$("search").value.trim().toLowerCase(), st=$("statusFilter").value;
+  const rows=mine.filter(l=>(!groupFilter||l.group===groupFilter)&&(!st||l.status===st)&&(!q||l.name.toLowerCase().includes(q)||l.phone.includes(q.replace(/\D/g,"")||"~")))
+    .sort((a,b)=>b.createdAt.localeCompare(a.createdAt));
+  const admin=session.role==="admin";
+  $("leadTable").innerHTML=`<tr><th>Received</th><th>Name</th><th>Phone</th><th>Group</th><th>Income vs. poverty level</th><th>Best time</th><th>Lang</th>${admin?"<th>Agent</th>":""}<th>Status</th></tr>`+
+    (rows.length?rows.map(l=>`<tr data-id="${l.id}">
+      <td class="num">${fmtDate(l.createdAt)}</td><td>${esc(l.name)}</td><td class="num">${fmtPhone(l.phone)}</td>
+      <td><span class="pill" style="color:${GROUPS[l.group].color}">${GROUPS[l.group].label}</span></td>
+      <td class="num">${l.fpl}%</td><td>${esc(l.bestTime)}</td><td>${l.lang.toUpperCase()}</td>
+      ${admin?`<td>${esc(db.agents.find(a=>a.id===l.agent)?.name||"")}</td>`:""}
+      <td><select class="status status-${l.status}" aria-label="Status for ${esc(l.name)}">${Object.entries(STATUS).map(([k,v])=>`<option value="${k}" ${k===l.status?"selected":""}>${v}</option>`).join("")}</select></td></tr>`).join("")
+     :`<tr><td colspan="9" class="empty">No leads match these filters.</td></tr>`);
+  $("leadTable").querySelectorAll("select.status").forEach(s=>s.onchange=()=>{
+    const l=db.leads.find(x=>x.id===s.closest("tr").dataset.id); l.status=s.value; save(); s.className="status status-"+s.value; toast(`${l.name} marked “${STATUS[s.value]}”`);
+  });
+}
+$("search").oninput=renderLeads; $("statusFilter").onchange=renderLeads;
+$("copyCsv").onclick=()=>{
+  const cols=["createdAt","name","phone","group","fpl","bestTime","lang","status"];
+  const csv=[cols.join(","),...visibleLeads().map(l=>cols.map(c=>`"${String(l[c]).replace(/"/g,'""')}"`).join(","))].join("\n");
+  navigator.clipboard.writeText(csv).then(()=>toast("Leads copied. Paste them into Excel or Google Sheets."),()=>toast("Copy is blocked in this window. In the real version this is a file download."));
+};
+$("sheetBtn").onclick=()=>toast("Demo: in the real version, new leads are also added to your own private Google Sheet automatically.");
+$("simulate").onclick=()=>{
+  const id=session.role==="admin"?"a1":session.agentId, a=db.agents.find(x=>x.id===id);
+  const names=["Elena G.","Marco D.","Jasmine L.","Victor N.","Paula Q."], gs=["G1","G2","G3","G4"];
+  const n=db.leads.length+1;
+  db.leads.push({id:"l"+n+"_"+Date.now(),agent:id,createdAt:new Date().toISOString().slice(0,16),name:names[n%5],phone:"30555501"+String(n%100).padStart(2,"0"),group:gs[n%4],bestTime:"morning",lang:n%2?"es":"en",fpl:110+n*9%250,status:"new"});
+  save(); tab="leads"; show();
+  toast(a.alerts?`New lead! Alert email sent to ${a.email} (demo)`:"New lead added (email alerts are off)");
+};
+
+/* ---------------- chatbot ---------------- */
+function renderBot(){
+  const a=me(); const link=BOT_BASE+a.slug;
+  $("botLink").value=link;
+  buildPhotoQR(a, link).then(url=>{ $("qrImg").src=url; }).catch(()=>{ $("qrImg").alt="QR code could not be created. Reload the page and try again."; });
+  $("botPreview").textContent=`${a.name} · Licensed agent · Lic. ${a.license||"MISSING – add it in your profile"} · ${a.phone}`;
+  const mine=db.leads.filter(l=>l.agent===a.id);
+  $("botStats").innerHTML=`<li>${mine.length} leads total</li><li>${mine.filter(l=>l.status==="enrolled").length} enrolled</li><li>${mine.filter(l=>l.lang==="es").length} chatted in Spanish</li>`;
+}
+/* QR with agent photo: error-correction level H (recovers up to ~30% of the code),
+   so a centered photo covering ~22% of the width still scans. */
+const initials=n=>n.split(/\s+/).map(w=>w[0]).join("").slice(0,2).toUpperCase();
+const loadImg=src=>new Promise((ok,bad)=>{ const i=new Image(); i.onload=()=>ok(i); i.onerror=bad; i.src=src; });
+async function buildPhotoQR(agent, link){
+  if(!window.QRCode) throw new Error("QR library missing");
+  const Q=720, PAD=40, W=Q+PAD*2, CAP=120, H=W+CAP;
+  const src=$("qrSrc"); src.innerHTML="";
+  new QRCode(src,{text:link,width:Q,height:Q,colorDark:"#0b2e22",colorLight:"#ffffff",correctLevel:QRCode.CorrectLevel.H});
+  const qrCanvas=src.querySelector("canvas");
+  const c=document.createElement("canvas"); c.width=W; c.height=H; const x=c.getContext("2d");
+  x.fillStyle="#ffffff"; x.fillRect(0,0,W,H);
+  x.drawImage(qrCanvas,PAD,PAD,Q,Q);
+  const cx=W/2, cy=PAD+Q/2, r=Q*0.11;               // photo diameter = 22% of QR width
+  x.beginPath(); x.arc(cx,cy,r+10,0,Math.PI*2); x.fillStyle="#ffffff"; x.fill();   // white quiet ring
+  x.save(); x.beginPath(); x.arc(cx,cy,r,0,Math.PI*2); x.clip();
+  if(agent.photo){ const img=await loadImg(agent.photo); const s=Math.min(img.width,img.height);
+    x.drawImage(img,(img.width-s)/2,(img.height-s)/2,s,s,cx-r,cy-r,r*2,r*2); }
+  else { x.fillStyle="#0b6e4f"; x.fillRect(cx-r,cy-r,r*2,r*2); x.fillStyle="#ffffff"; x.font="700 64px 'Bricolage Grotesque',system-ui,sans-serif"; x.textAlign="center"; x.textBaseline="middle"; x.fillText(initials(agent.name),cx,cy+3); }
+  x.restore();
+  x.beginPath(); x.arc(cx,cy,r,0,Math.PI*2); x.lineWidth=6; x.strokeStyle="#0b6e4f"; x.stroke();
+  x.fillStyle="#0b2e22"; x.textAlign="center"; x.textBaseline="alphabetic";
+  x.font="700 40px 'Bricolage Grotesque',system-ui,sans-serif"; x.fillText("Scan to check your 2027 health plan",cx,W+30,W-40);
+  x.font="400 32px 'Atkinson Hyperlegible',system-ui,sans-serif"; x.fillStyle="#3d4a44"; x.fillText(`${agent.name} · Licensed agent · ${agent.phone}`,cx,W+80,W-40);
+  return c.toDataURL("image/png");
+}
+/* Profile photo: resize to 320px square-ish before storing */
+function readPhoto(file){
+  return new Promise((ok,bad)=>{
+    if(!file) return bad(new Error("none"));
+    if(!/^image\/(png|jpeg|webp)$/.test(file.type)) return bad(new Error("type"));
+    if(file.size>8*1024*1024) return bad(new Error("size"));
+    const fr=new FileReader(); fr.onerror=bad;
+    fr.onload=async()=>{ try{ const img=await loadImg(fr.result); const s=Math.min(img.width,img.height), D=320;
+      const c=document.createElement("canvas"); c.width=D; c.height=D;
+      c.getContext("2d").drawImage(img,(img.width-s)/2,(img.height-s)/2,s,s,0,0,D,D);
+      ok(c.toDataURL("image/jpeg",0.85)); }catch(e){ bad(e); } };
+    fr.readAsDataURL(file);
+  });
+}
+function setAvatar(a){
+  const av=$("avatar"); if(a&&a.photo){ av.innerHTML=`<img alt="" src="${a.photo}">`; } else { av.textContent=initials(a?a.name:"Account Owner"); }
+}
+$("pPhoto").onchange=async e=>{
+  const m=$("profileMsg");
+  try{ me().photo=await readPhoto(e.target.files[0]); save(); renderProfile(); setAvatar(me()); m.style.color="var(--ok)"; m.textContent="Photo saved. Your QR code now shows it."; }
+  catch(err){ m.style.color="var(--err)"; m.textContent= err.message==="type"?"Use a JPG, PNG or WebP image.": err.message==="size"?"That photo is larger than 8 MB. Choose a smaller one.":"That photo could not be read. Try another one."; }
+  e.target.value="";
+};
+$("pPhotoRemove").onclick=()=>{ delete me().photo; save(); renderProfile(); setAvatar(me()); $("profileMsg").style.color="var(--ok)"; $("profileMsg").textContent="Photo removed. Your QR code shows your initials."; };
+
+$("copyLink").onclick=()=>navigator.clipboard.writeText($("botLink").value).then(()=>toast("Link copied"),()=>{ $("botLink").select(); toast("Press Ctrl+C / ⌘C to copy"); });
+
+/* ---------------- profile & security ---------------- */
+function renderProfile(){
+  const a=me();
+  const pv=$("pPhotoPreview"); if(a.photo){ pv.src=a.photo; pv.hidden=false; $("pPhotoRemove").hidden=false; } else { pv.removeAttribute("src"); pv.hidden=true; $("pPhotoRemove").hidden=true; }
+  $("pName").value=a.name; $("pPhone").value=a.phone; $("pEmail").value=a.email; $("pLicense").value=a.license; $("pBooking").value=a.booking;
+  $("alertEmail").checked=a.alerts; $("mfa").checked=a.mfa; $("alertTo").textContent=`Alerts go to ${a.email}`; $("profileMsg").textContent=""; $("pwMsg").textContent="";
+  $("signins").innerHTML=["Today 9:02 AM · Miami, FL · Chrome on iPhone","Nov 7, 6:15 PM · Miami, FL · Chrome on Windows"].map(s=>`<li>${s}</li>`).join("");
+}
+$("profileForm").onsubmit=e=>{
+  e.preventDefault(); const a=me(), m=$("profileMsg");
+  const phone=$("pPhone").value.replace(/\D/g,""), email=$("pEmail").value.trim();
+  if(!$("pName").value.trim()) return m.textContent="Enter your full name.", m.style.color="var(--err)";
+  if(phone.length!==10) return m.textContent="Enter a 10-digit phone number.", m.style.color="var(--err)";
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return m.textContent="Enter a valid email address.", m.style.color="var(--err)";
+  if(!$("pLicense").value.trim()) return m.textContent="Enter your Florida license #. It must appear on your chatbot.", m.style.color="var(--err)";
+  Object.assign(a,{name:$("pName").value.trim(),phone:fmtPhone(phone),email,license:$("pLicense").value.trim(),booking:$("pBooking").value.trim()});
+  save(); m.style.color="var(--ok)"; m.textContent="Saved. Your chatbot now shows these details.";
+  $("whoName").textContent=a.name;
+};
+$("alertEmail").onchange=e=>{ me().alerts=e.target.checked; save(); toast(e.target.checked?"Email alerts on":"Email alerts off"); };
+$("mfa").onchange=e=>{ me().mfa=e.target.checked; save(); toast(e.target.checked?"2-step verification on. You'll enter a code at sign-in.":"2-step verification off"); };
+$("pwBtn").onclick=()=>{ $("pwMsg").textContent=`Demo: a secure password-reset link would be emailed to ${me().email}.`; };
+
+/* ---------------- admin ---------------- */
+function renderAdmin(){
+  const L=db.leads;
+  $("adminChips").innerHTML=[["Active agents",db.agents.filter(a=>a.active).length],["Total leads",L.length],["Enrolled",L.filter(l=>l.status==="enrolled").length],["New, not called",L.filter(l=>l.status==="new").length]]
+    .map(([t,v])=>`<div class="chip" style="cursor:default"><b>${v}</b><span>${t}</span></div>`).join("");
+  $("agentTable").innerHTML=`<tr><th>Agent</th><th>Email</th><th>Phone</th><th>License #</th><th>Leads</th>${Object.keys(GROUPS).slice(0,4).map(k=>`<th>${k}</th>`).join("")}<th>Enrolled</th><th>Status</th><th></th></tr>`+
+    db.agents.map(a=>{ const m=L.filter(l=>l.agent===a.id);
+      return `<tr data-id="${a.id}"><td>${esc(a.name)}</td><td>${esc(a.email)}</td><td class="num">${esc(a.phone)}</td>
+      <td>${a.license?esc(a.license):'<span class="pill" style="color:var(--err)">Missing</span>'}</td>
+      <td class="num">${m.length}</td>${["G1","G2","G3","G4"].map(g=>`<td class="num">${m.filter(l=>l.group===g).length}</td>`).join("")}
+      <td class="num">${m.filter(l=>l.status==="enrolled").length}</td>
+      <td><span class="pill" style="color:${a.active?"var(--ok)":"var(--rev)"}">${a.active?"Active":"Inactive"}</span></td>
+      <td><button class="btn ${a.active?"danger":"ghost"} toggle" type="button">${a.active?"Deactivate":"Activate"}</button></td></tr>`; }).join("");
+  $("agentTable").querySelectorAll(".toggle").forEach(b=>b.onclick=()=>{
+    const a=db.agents.find(x=>x.id===b.closest("tr").dataset.id);
+    if(!a.active && !a.license){ toast(`Add ${a.name}'s Florida license # before activating.`); return; }
+    a.active=!a.active; save(); renderAdmin(); toast(`${a.name} ${a.active?"activated: chatbot link is live":"deactivated: chatbot link paused"}`);
+  });
+}
+$("addAgent").onsubmit=e=>{
+  e.preventDefault(); const m=$("addMsg");
+  const name=$("aName").value.trim(), email=$("aEmail").value.trim().toLowerCase(), phone=$("aPhone").value.replace(/\D/g,""), license=$("aLicense").value.trim();
+  const fail=t=>{ m.style.color="var(--err)"; m.textContent=t; };
+  if(!name) return fail("Enter the agent's full name.");
+  if(!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email)) return fail("Enter a valid email address.");
+  if(db.agents.some(a=>a.email===email)) return fail("An agent with this email already exists.");
+  if(phone.length!==10) return fail("Enter a 10-digit phone number.");
+  let slug=name.toLowerCase().normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^a-z0-9]+/g,"-").replace(/^-|-$/g,""); while(db.agents.some(a=>a.slug===slug)) slug+="-2";
+  db.agents.push({id:"a"+Date.now(),slug,name,email,phone:fmtPhone(phone),license,booking:"",active:false,alerts:true,mfa:false});
+  save(); e.target.reset(); m.style.color="var(--ok)"; m.textContent=`Added ${name}. Demo: an invite email would go to ${email}. Activate them once their license # is checked.`; renderAdmin();
+};
+</script>
